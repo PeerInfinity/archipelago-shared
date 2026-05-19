@@ -2,12 +2,7 @@
 
 Shared JavaScript utilities used by [Archipelago-CC](https://github.com/PeerInfinity/Archipelago-CC) and its substrate modules.
 
-This repository is consumed as a git submodule. Two checkouts of this repo are expected to coexist in the parent Archipelago-CC tree:
-
-- `frontend/modules/shared/` — used by the host frontend
-- `frontend/modules/textAdventure-remote/shared/` — nested submodule used by the standalone text-adventure substrate
-
-Both pins point at this same repo. Updates should normally advance both pins together; the parent project does not currently enforce that.
+This repository is consumed as a git submodule at `frontend/modules/shared/` in the parent Archipelago-CC tree.
 
 ## Contents
 
