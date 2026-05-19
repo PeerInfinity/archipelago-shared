@@ -52,6 +52,14 @@
  *                               //            name?, region?, x?, y? }
  *   }
  *
+ * Each method returns `void` or `Promise<void>`. Iframe-backed
+ * substrates (e.g. textAdventureSubstrateWrapper) implement these as
+ * host-side proxies that postMessage to an in-iframe controller and
+ * naturally produce a Promise. The bot's `_dispatch` is fire-and-
+ * forget — it does not await the return value. Progress signals come
+ * back through the regular dispatcher events (user:locationCheck,
+ * user:regionMove), the same way they do for in-process substrates.
+ *
  * Build-time slots are optional. A substrate that only handles
  * runtime playback (e.g. consuming hand-authored sidecars) can
  * register without them; the driver checks for required slots at
