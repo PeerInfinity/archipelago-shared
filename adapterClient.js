@@ -11,7 +11,7 @@ import {
 
 /**
  * Detect whether the current context is an iframe or a separate window.
- * @returns {{ mode: 'iframe'|'window', targetWindow: Window, id: string }}
+ * @returns {{ mode: 'iframe'|'window', targetWindow: Window, id: string, hostOrigin: string|null }}
  */
 function detectContext() {
     const urlParams = new URLSearchParams(window.location.search);
@@ -21,6 +21,11 @@ function detectContext() {
     const iframeIdParam = urlParams.get('iframeId');
     const clientIdParam = urlParams.get('clientId');
     const customName = urlParams.get('windowName') || urlParams.get('iframeName') || null;
+    // Host origin, passed by the host panel. Needed so a cross-origin module
+    // can target its outbound postMessage at the host: window.location.origin
+    // is the *module's own* origin, which only equals the host's origin for
+    // same-origin modules. Absent for legacy/standalone loads (then '*').
+    const hostOriginParam = urlParams.get('hostOrigin') || null;
 
     // Detect window mode: opener exists, is not null, is not closed, is not self
     const hasOpener = window.opener && window.opener !== window && !window.opener.closed;
@@ -56,16 +61,21 @@ function detectContext() {
         id = generateClientId(customName || 'standalone');
     }
 
-    return { mode, targetWindow, id };
+    return { mode, targetWindow, id, hostOrigin: hostOriginParam };
 }
 
 export class AdapterClient {
     constructor() {
-        const { mode, targetWindow, id } = detectContext();
+        const { mode, targetWindow, id, hostOrigin } = detectContext();
 
         this.mode = mode;
         this.clientId = id;
         this.targetWindow = targetWindow;
+        // Origin to target outbound postMessage at (the host). Provided by the
+        // host panel via the hostOrigin URL param; if absent, sends fall back
+        // to '*' until learned from the first inbound message (see
+        // handlePostMessage). Required for true cross-origin module loading.
+        this.hostOrigin = hostOrigin;
 
         this.isConnected = false;
         this.connectionTimeout = null;
@@ -181,6 +191,14 @@ export class AdapterClient {
         const messageId = message.clientId || message.iframeId || message.windowId;
         if (messageId !== this.clientId) {
             return;
+        }
+
+        // Learn the host origin from the first inbound message if it was not
+        // provided as a URL param — lets subsequent sends target the host
+        // explicitly instead of falling back to '*'.
+        if (!this.hostOrigin && typeof event.origin === 'string'
+            && event.origin && event.origin !== 'null') {
+            this.hostOrigin = event.origin;
         }
 
         // Handle different message types
@@ -531,11 +549,16 @@ export class AdapterClient {
         const message = createMessage(type, this.clientId, data);
 
         try {
-            // Try origin-specific first for better security
-            this.targetWindow.postMessage(message, window.location.origin);
+            // Target the host's origin explicitly when known. Note this must
+            // be the *host's* origin, not window.location.origin (the
+            // module's own origin) — those differ for cross-origin modules,
+            // and a mismatched targetOrigin makes the browser silently drop
+            // the message (no exception). '*' only until the host origin is
+            // known (legacy loads without the hostOrigin param).
+            this.targetWindow.postMessage(message, this.hostOrigin || '*');
         } catch (originError) {
             try {
-                // Fallback to wildcard origin
+                // Fallback to wildcard origin (e.g. malformed hostOrigin)
                 this.targetWindow.postMessage(message, '*');
             } catch (error) {
                 // Failed to send message
