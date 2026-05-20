@@ -2,7 +2,7 @@
 // URLs into the iframe / window panels.
 //
 // Custom free-text URL entry stays enabled (see the trust model in
-// CC/docs/plans/partial/external-iframe-modules.md) but loading a URL that is
+// CC/docs/plans/completed/external-iframe-modules.md) but loading a URL that is
 // not a knownIframePages / knownWindowPages entry is gated behind this
 // acknowledged warning. The warning appears on every custom-URL load unless
 // the user ticks "Don't show this warning again", which persists suppression
