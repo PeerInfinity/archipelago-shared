@@ -16,6 +16,8 @@
  *   {
  *     // Identity (required)
  *     id,                       // string, unique substrate id
+ *     label,                    // human-readable display name (e.g. 'Maze', 'Text Adventure', 'JtA');
+ *                               // used by UI surfaces like the panel-status overlay
  *
  *     // Runtime — required for substrates that ship a panel
  *     panelComponentType,       // Golden Layout component type
