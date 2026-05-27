@@ -41,7 +41,7 @@
  *   }
  *
  * PlaybackController contract (substrate-neutral, used by the playback
- * bot):
+ * bot and by the loops module's `customQueue` action type):
  *
  *   {
  *     play(rateHz?),            // start internal clock at given rate
@@ -52,6 +52,16 @@
  *     setRate(rateHz),          // change clock rate
  *     walkTo(target),           // target = { kind:'location'|'exit'|'tile',
  *                               //            name?, region?, x?, y? }
+ *     replayActions(actions, { onComplete }) — optional;
+ *                               // dispatch substrate-native saved-queue
+ *                               // actions in order. onComplete fires
+ *                               // when the substrate has executed every
+ *                               // action (or stopped trying). Returning
+ *                               // null / not implementing this method
+ *                               // means "this substrate does not support
+ *                               // saved-queue replay" and the loops
+ *                               // customQueue action will fall back to
+ *                               // manual mode at that point.
  *   }
  *
  * Each method returns `void` or `Promise<void>`. Iframe-backed
