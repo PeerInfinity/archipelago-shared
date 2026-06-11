@@ -162,7 +162,11 @@ export const DEFAULT_OBSTACLES = Object.freeze({
 });
 
 /**
- * Evaluate a Rule Builder rule against a Set<item_id> inventory.
+ * Evaluate a Rule Builder rule against an inventory — either a
+ * Set<item_id> (count-blind: every held item counts as 1) or a
+ * Map<item_id, count> (count-aware: Has with `args.count` compares
+ * against the held count; the sphere-growth count gates need this —
+ * the forward simulator carries a Map).
  *
  * Supports the subset of rules the v1 maze pipeline produces and a
  * few common AP-side constructs: Has, HasAll, HasAny, And, Or,
@@ -173,11 +177,12 @@ export const DEFAULT_OBSTACLES = Object.freeze({
  * keeps working. The full Rule-Builder schema is handled by the
  * runtime evaluator (`shared/ruleEngine.js`) when stateManager has
  * a snapshot context — see mazeRoomUI._currentRuleEvaluator.
- *
- * `count > 1` on Has is treated as present-iff-in-inventory (Set
- * membership has no count). v1 keys are singletons so this is
- * accurate; count-sensitive rules are a growth path.
  */
+function inventoryCount(inventory, itemName) {
+    if (inventory instanceof Map) return inventory.get(itemName) ?? 0;
+    return inventory.has(itemName) ? 1 : 0;
+}
+
 export function evaluateRuleAgainstInventory(rule, inventory) {
     if (!rule || typeof rule !== 'object') return false;
     switch (rule.rule) {
@@ -185,7 +190,8 @@ export function evaluateRuleAgainstInventory(rule, inventory) {
         case 'False_': return false;
         case 'Has': {
             const itemName = rule.args?.item_name;
-            return itemName != null && inventory.has(itemName);
+            if (itemName == null) return false;
+            return inventoryCount(inventory, itemName) >= (rule.args?.count ?? 1);
         }
         case 'HasAll': {
             const items = rule.args?.items ?? [];

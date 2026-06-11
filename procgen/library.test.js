@@ -174,6 +174,22 @@ describe('isObstacleCleared / evaluateRuleAgainstInventory smoke (covered indire
         expect(evaluateRuleAgainstInventory(and, new Set(['a']))).toBe(false);
     });
 
+    it('Has with count is count-aware against a Map inventory', () => {
+        const rule = { rule: 'Has', args: { item_name: 'key_red', count: 2 } };
+        expect(evaluateRuleAgainstInventory(rule, new Map([['key_red', 2]]))).toBe(true);
+        expect(evaluateRuleAgainstInventory(rule, new Map([['key_red', 3]]))).toBe(true);
+        expect(evaluateRuleAgainstInventory(rule, new Map([['key_red', 1]]))).toBe(false);
+        expect(evaluateRuleAgainstInventory(rule, new Map())).toBe(false);
+        // Set inventories stay count-blind (membership == count 1),
+        // so a count-2 rule is unsatisfiable — the conservative
+        // "blocked" direction for callers that haven't migrated.
+        expect(evaluateRuleAgainstInventory(rule, new Set(['key_red']))).toBe(false);
+        // count 1 (or absent) keeps plain membership semantics on both.
+        const plain = { rule: 'Has', args: { item_name: 'key_red' } };
+        expect(evaluateRuleAgainstInventory(plain, new Set(['key_red']))).toBe(true);
+        expect(evaluateRuleAgainstInventory(plain, new Map([['key_red', 1]]))).toBe(true);
+    });
+
     it('evaluates HasAll / HasAny natively', () => {
         const all = { rule: 'HasAll', args: { items: ['a', 'b'] } };
         expect(evaluateRuleAgainstInventory(all, new Set(['a', 'b']))).toBe(true);

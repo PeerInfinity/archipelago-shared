@@ -240,9 +240,13 @@ export function generateSphereLog(rulesDoc, opts = {}) {
     // and the loop terminates immediately, leaving the embedded sphere
     // log with only the metadata + an empty sphere "0" entry.
     const startingItems = rulesDoc.starting_items?.[String(playerId)] ?? [];
-    const inventory = new Set(startingItems);
+    // Map<item, count>, not Set — duplicate instances must accumulate
+    // so count gates (Has with args.count > 1, emitted by sphere
+    // growth for multi-instance pool items) evaluate correctly.
+    const inventory = new Map();
     const startingItemCounts = {};
     for (const name of startingItems) {
+        inventory.set(name, (inventory.get(name) ?? 0) + 1);
         startingItemCounts[name] = (startingItemCounts[name] ?? 0) + 1;
     }
     const checkedLocations = new Set();
@@ -303,7 +307,7 @@ export function generateSphereLog(rulesDoc, opts = {}) {
 
             checkedLocations.add(location.name);
             const itemName = location.item?.name;
-            if (itemName) inventory.add(itemName);
+            if (itemName) inventory.set(itemName, (inventory.get(itemName) ?? 0) + 1);
 
             const afterRegions = computeReachableRegions(model, inventory);
             const afterLocs = computeAccessibleLocations(model, inventory, afterRegions);
