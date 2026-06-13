@@ -32,6 +32,33 @@
  *     // / no controller available" and the bot should no-op.
  *     getPlaybackController,    // () -> PlaybackController | null
  *
+ *     // Runtime — loop-mode capabilities (optional). Declares which
+ *     // loops-panel affordances this substrate's regions get. The
+ *     // loops UI gates its per-region controls on this field:
+ *     //   queueActions — which loop queue action types can be
+ *     //     authored for the region ('regionMove', 'locationCheck',
+ *     //     'explore'). E.g. bounce supports regionMove +
+ *     //     locationCheck (mapped to the playback bot) but has no
+ *     //     explore action.
+ *     //   manual — the region can be played by hand in loop mode
+ *     //     (manual checkbox / manual entries).
+ *     //   customQueues — saved substrate-native action queues can be
+ *     //     recorded and replayed for the region.
+ *     //   executeVia (optional) — 'playbackBot' makes the loops
+ *     //     queue execute the region's queueActions by driving the
+ *     //     substrate's PlaybackController.walkTo (the queue parks
+ *     //     until the resulting locationCheck / regionChanged event
+ *     //     arrives, then charges the action's loop_costs value).
+ *     //     Absent ⇒ generic timer execution (event-driven teleport
+ *     //     / AP-level check).
+ *     // ABSENT field ⇒ no loop-mode affordances for the substrate's
+ *     // regions. AP-native regions (no substrate at all) are not
+ *     // affected — loops drives those itself.
+ *     loopSupport,              // { queueActions: string[],
+ *                               //   manual: boolean,
+ *                               //   customQueues: boolean,
+ *                               //   executeVia?: 'playbackBot' }
+ *
  *     // Build-time — required for substrates that drive procgen
  *     generateRegionCore,       // (input) -> { world, exits_placed, ... }
  *     placeFromItems,           // (world, input) -> { placed_items, placed_obstacles }
