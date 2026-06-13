@@ -6,7 +6,7 @@
  * Used by mazeRoom, textAdventureSubstrateWrapper, jtaSubstrateWrapper.
  * Each panel mounts one of these as a sibling of its inner content
  * container and toggles visibility on `procgen:activeSubstrateChanged`
- * (and `loopUI:modeChanged` for the Loops button).
+ * (and `gameState:loopModeChanged` for the Loops button).
  *
  * State values (open string enum so loop-mode states can extend later):
  *   - 'wrong-substrate'      — current region uses a different substrate
