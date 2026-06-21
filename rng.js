@@ -10,6 +10,12 @@ export function createRng(seed) {
             t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
             return ((t ^ t >>> 14) >>> 0) / 4294967296;
         },
+        // Snapshot / restore the entire internal state (the single 32-bit
+        // mulberry32 counter). Lets a seeded stream be serialized between
+        // pipeline steps and resumed exactly — two streams with the same
+        // state produce identical sequences. See the stepped-pipeline CLI.
+        getState() { return s; },
+        setState(v) { s = v | 0; },
         randint(min, max) {
             return min + Math.floor(this.next() * (max - min + 1));
         },
