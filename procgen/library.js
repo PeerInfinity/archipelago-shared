@@ -194,14 +194,14 @@ export function evaluateRuleAgainstInventory(rule, inventory) {
             return inventoryCount(inventory, itemName) >= (rule.args?.count ?? 1);
         }
         case 'HasAll': {
-            const items = rule.args?.items ?? [];
+            const items = rule.args?.items ?? rule.args?.item_names ?? [];
             for (const item of items) {
                 if (!inventory.has(item)) return false;
             }
             return true;
         }
         case 'HasAny': {
-            const items = rule.args?.items ?? [];
+            const items = rule.args?.items ?? rule.args?.item_names ?? [];
             for (const item of items) {
                 if (inventory.has(item)) return true;
             }
