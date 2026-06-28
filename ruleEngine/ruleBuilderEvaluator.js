@@ -417,6 +417,48 @@ export function createRuleBuilderEvaluator(evaluateRule) {
         return hasUndefined ? undefined : false;
       }
 
+      // Composite rules: AtLeast — true when at least `count` children are true.
+      // Serialized as {"rule": "AtLeast", "children": [...], "count": N}.
+      case 'AtLeast': {
+        // Support rule.children (native) and args.rules/args.children (legacy/AST).
+        const atLeastChildren = args.rules || args.children || children;
+        // count lives at the rule root, mirroring And/Or's children placement.
+        let required = rule.count ?? args.count ?? 0;
+        if (required && typeof required === 'object' && (required.type || required.rule)) {
+          required = evaluateRule(required, context, depth + 1, localScope);
+        }
+        required = required ?? 0;
+        if (required <= 0) return true;            // 0-of-N is trivially satisfied
+        if (atLeastChildren.length < required) return false;
+        let satisfied = 0;
+        let unknownCount = 0;
+        let hasSMBool = false;
+        let totalDifficulty = 0;
+        for (const childRule of atLeastChildren) {
+          let result = evaluateRule(childRule, context, depth + 1, localScope);
+          let boolValue = result;
+          if (result && typeof result === 'object' && 'bool' in result) {
+            boolValue = result.bool;
+            hasSMBool = true;
+            if (boolValue) totalDifficulty += result.difficulty || 0;
+          }
+          if (boolValue === undefined) {
+            unknownCount += 1;
+            continue;
+          }
+          if (boolValue) {
+            satisfied += 1;
+            if (satisfied >= required) {
+              return hasSMBool ? { bool: true, difficulty: totalDifficulty } : true;
+            }
+          }
+        }
+        // Not enough definite trues. If the unknown children could still tip us
+        // over the threshold, the outcome is unknown; otherwise it's false.
+        if (satisfied + unknownCount >= required) return undefined;
+        return false;
+      }
+
       // Conditional: ternary rule (test ? if_true : if_false)
       // Rule Builder: {"rule": "Conditional", "args": {"test": {...}, "if_true": {...}, "if_false": {...}}}
       case 'Conditional': {

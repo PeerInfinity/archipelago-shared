@@ -402,6 +402,48 @@ describe('Rule Engine - Shared Fixtures', () => {
   }
 });
 
+// AtLeast-specific behaviors not expressible in the boolean-constant fixtures:
+// short-circuit and three-valued (undefined) propagation, mirroring And/Or.
+describe('Rule Engine - AtLeast (Rule Builder)', () => {
+  const T = { type: 'constant', value: true };
+  const F = { type: 'constant', value: false };
+  // An unknown AST type evaluates to undefined (core.js warns + returns undefined).
+  const U = { type: '__unknown_for_test__' };
+  const atLeast = (count, children) => ({ rule: 'AtLeast', count, children });
+  const ctx = () => MockContext.fromTestContext({});
+
+  it('returns true once `count` children are satisfied', () => {
+    expect(evaluateRule(atLeast(2, [T, F, T]), ctx())).toBe(true);
+  });
+
+  it('returns false when fewer than `count` children are satisfiable', () => {
+    expect(evaluateRule(atLeast(3, [T, F, T]), ctx())).toBe(false);
+  });
+
+  it('count <= 0 is trivially true', () => {
+    expect(evaluateRule(atLeast(0, [F, F]), ctx())).toBe(true);
+  });
+
+  it('count greater than #children is false', () => {
+    expect(evaluateRule(atLeast(4, [T, T, T]), ctx())).toBe(false);
+  });
+
+  it('short-circuits to true ignoring later unknown children', () => {
+    // One definite true already meets count=1; the unknown child is never decisive.
+    expect(evaluateRule(atLeast(1, [T, U]), ctx())).toBe(true);
+  });
+
+  it('propagates undefined when an unknown child could tip past the threshold', () => {
+    // 1 definite true + 1 unknown, need 2 -> outcome unknown.
+    expect(evaluateRule(atLeast(2, [T, U]), ctx())).toBeUndefined();
+  });
+
+  it('returns false when unknowns cannot possibly reach the threshold', () => {
+    // 1 true, 1 false, 1 unknown, need 3 -> max reachable is 2 -> false.
+    expect(evaluateRule(atLeast(3, [T, F, U]), ctx())).toBe(false);
+  });
+});
+
 describe('MockContext', () => {
   describe('inventory operations', () => {
     it('hasItem returns true for items with count > 0', () => {

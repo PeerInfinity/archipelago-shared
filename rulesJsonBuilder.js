@@ -27,6 +27,10 @@ export function makeOrRule(children) {
   return { rule: 'Or', children };
 }
 
+export function makeAtLeastRule(count, children) {
+  return { rule: 'AtLeast', count, children };
+}
+
 export function makeTrueRule() {
   return { rule: 'True_' };
 }

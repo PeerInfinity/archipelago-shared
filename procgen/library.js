@@ -219,6 +219,18 @@ export function evaluateRuleAgainstInventory(rule, inventory) {
             }
             return false;
         }
+        case 'AtLeast': {
+            // True when at least `count` children are satisfied.
+            const required = rule.count ?? rule.args?.count ?? 0;
+            if (required <= 0) return true;
+            let satisfied = 0;
+            for (const child of rule.children ?? []) {
+                if (evaluateRuleAgainstInventory(child, inventory)) {
+                    if (++satisfied >= required) return true;
+                }
+            }
+            return false;
+        }
         default:
             // Unsupported construct (CountItem, helpers, count_check, …).
             // Treat as unsatisfied so substrate placement / path
