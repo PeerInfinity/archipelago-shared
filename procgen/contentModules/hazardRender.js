@@ -1,8 +1,7 @@
 /**
  * Hazard rendering — pure canvas overlay helpers.
  *
- * Plan: NewDocs/plans/procedural-generation/maze-content-modules.md
- * (Phase 2). Consumes hazards (from hazardPathGen) at their current
+ * Consumes hazards (from hazardPathGen) at their current
  * runtime phase (from hazardRuntime) and draws:
  *   - the hazard's PATH as a thick red line connecting tile centers
  *     (closed for loops, open for linear paths),

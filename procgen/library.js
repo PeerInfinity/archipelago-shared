@@ -1,12 +1,9 @@
 /**
  * Items / obstacles library for the maze substrate.
  *
- * Shape loosely follows the pipeline overview's items/obstacles library
- * design (NewDocs/plans/procedural-generation/pipeline-overview.md
- * §"Items / obstacles library"). In the eventual pipeline, these
- * libraries live in the scenario's preset directory as JSON; for now
- * they live with the substrate's frontend module and are imported
- * directly.
+ * The vocabulary and its clear-condition semantics are documented in
+ * docs/json/developer/procgen/paths-and-obstacles.md. The libraries
+ * live with the substrate's frontend module and are imported directly.
  *
  * Items declare Archipelago classification. Obstacles declare one of
  * two clear-condition representations, distinguished by

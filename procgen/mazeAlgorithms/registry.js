@@ -10,7 +10,7 @@
  * to register its own backends here. Today only the maze substrate
  * uses it.
  *
- * See NewDocs/plans/procedural-generation/maze-biomes.md.
+ * See docs/json/developer/procgen/maze.md ("Biomes and wall backends").
  */
 
 const registry = new Map();

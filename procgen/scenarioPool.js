@@ -18,8 +18,7 @@
  * is accepted by the plan call but not consulted in v1 — richer
  * planners that use it are growth.
  *
- * See NewDocs/plans/procedural-generation/substrate-pipeline-
- * architecture.md §"Scenario pool is shared".
+ * See docs/json/developer/procgen/architecture.md.
  */
 
 export class ScenarioPool {

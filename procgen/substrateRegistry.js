@@ -8,10 +8,9 @@
  * substrateRegistry.register(entry). The registry is a singleton;
  * entries are keyed by their `id` field.
  *
- * Entry shape (informal — see procgen-player.md §"Substrate
- * registry" for the runtime fields, and
- * text-adventure-substrate.md §"Substrate registry entry,
- * expanded" for the build-time slots):
+ * Entry shape (informal — the authoritative field-by-field reference,
+ * including optional fields not listed here, is
+ * docs/json/developer/procgen/substrate-registry.md):
  *
  *   {
  *     // Identity (required)

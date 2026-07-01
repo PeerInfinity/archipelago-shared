@@ -19,7 +19,7 @@
  * target-selection implementation; the visualizer / bot / sphere log
  * generator never re-implement it.
  *
- * Faithfulness target (per debugging-tools.md, Phase 1.4):
+ * Faithfulness target:
  *   - Integer-sphere contents MUST match Python's MultiWorld.get_spheres
  *     output exactly. "Integer sphere N's contents" = the set of
  *     locations whose pickups appear in fractional entries N.1, N.2, …
@@ -40,8 +40,7 @@
  *     emitted as sphere_locations — they're noted in
  *     `new_accessible_locations` deltas but otherwise ignored.
  *
- * Plan reference:
- * NewDocs/plans/procedural-generation/debugging-tools.md (Phase 1.4)
+ * See docs/json/developer/procgen/playback-and-debugging.md.
  */
 
 import { evaluateRuleAgainstInventory } from './library.js';

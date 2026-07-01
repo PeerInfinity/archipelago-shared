@@ -5,8 +5,8 @@
  * module registers itself at module load time; substrates resolve
  * them by id and call whichever hooks are present.
  *
- * Plan: NewDocs/plans/procedural-generation/maze-content-modules.md
- * (Phase 2). The registry sits alongside mazeAlgorithms/registry.js
+ * See docs/json/developer/procgen/maze.md ("Content modules"). The
+ * registry sits alongside mazeAlgorithms/registry.js
  * (wall-generation backends) and shares its registration shape.
  *
  * Hook contract (all optional):

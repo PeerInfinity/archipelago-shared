@@ -2,8 +2,8 @@
  * Hazard runtime — pure helpers for advancing hazard cycles and
  * checking player-move validity against them.
  *
- * Plan: NewDocs/plans/procedural-generation/maze-content-modules.md
- * (Phase 2). Consumes the hazard data produced by hazardPathGen.js.
+ * Consumes the hazard data produced by hazardPathGen.js. See
+ * docs/json/developer/procgen/maze.md ("Content modules").
  *
  * Hazard runtime shape (mutable phase, immutable everything else):
  *

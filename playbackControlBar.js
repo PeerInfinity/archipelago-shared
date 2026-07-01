@@ -20,8 +20,7 @@
  *   });
  *   container.appendChild(bar.getElement());
  *
- * Plan reference:
- * NewDocs/plans/procedural-generation/debugging-tools.md (Phase 1.3)
+ * See docs/json/developer/procgen/playback-and-debugging.md.
  */
 
 const DEFAULT_RATE_HZ = 4;

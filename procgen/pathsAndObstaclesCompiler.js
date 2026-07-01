@@ -1,9 +1,8 @@
 /**
  * Paths-and-obstacles → Rule Builder compiler.
  *
- * Implements the four-nested-loop expansion from
- * NewDocs/plans/procedural-generation/pipeline-overview.md
- * §"Authored rules: paths and obstacles":
+ * Implements the four-nested-loop expansion
+ * (docs/json/developer/procgen/paths-and-obstacles.md):
  *
  *     reach(target) =
  *       OR over paths p:

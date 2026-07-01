@@ -1,8 +1,7 @@
 /**
  * Shared simulator core — genre-agnostic machinery shared by playbots,
  * reachability analyzers, and procedural generators. See
- * NewDocs/plans/procedural-generation/shared-simulator-core.md for the
- * full design rationale.
+ * docs/json/developer/procgen/playback-and-debugging.md.
  *
  * What lives here:
  *   - `reach(world, solver, startState, goalPred, options)` — the query

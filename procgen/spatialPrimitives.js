@@ -4,8 +4,7 @@
  * on a grid). No dependencies on any substrate's world model — these
  * are functions of width / height / side / tile coordinates only.
  *
- * See NewDocs/plans/procedural-generation/text-adventure-substrate.md
- * §"Adapter primitives library" for why this module exists separately
+ * Why this module exists separately
  * from `adapterPrimitives.js`: the adapter primitives implement
  * substrate adapter functions and depend on the maze world model;
  * spatial primitives don't depend on any world model and live one

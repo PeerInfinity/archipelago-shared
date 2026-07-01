@@ -21,8 +21,8 @@
  * a third substrate's needs justify it; the substrate registry
  * interface stays unchanged.
  *
- * See NewDocs/plans/procedural-generation/text-adventure-substrate.md
- * §"Adapter primitives library" for the design discussion.
+ * See docs/json/developer/procgen/substrate-registry.md and
+ * docs/json/developer/procgen/text-adventure.md.
  */
 
 // Tile-grid adapter functions. Implementations live in mazeRoom/ and

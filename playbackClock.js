@@ -10,8 +10,7 @@
  * thin scheduler layer drives `_tick` from requestAnimationFrame.
  * Tests can call `_tick` directly with controlled timestamps.
  *
- * Plan reference:
- * NewDocs/plans/procedural-generation/debugging-tools.md (Phase 1.2)
+ * See docs/json/developer/procgen/playback-and-debugging.md.
  */
 
 const DEFAULT_RATE_HZ = 4;

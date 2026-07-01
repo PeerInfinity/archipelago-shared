@@ -3,8 +3,7 @@
  * sequence a hazard cycles along. The runtime (Phase 2c) consumes
  * these to drive cycle position + facing; this file is geometry-only.
  *
- * Plan: NewDocs/plans/procedural-generation/maze-content-modules.md
- * (Phase 2). User design call (2026-05-10):
+ * Path shapes (user design call, 2026-05-10):
  *   - 2/3/5-tile linear paths (straight or bent).
  *   - 4/8-tile loops.
  *   - Cycle math: linear N → 2(N-1) turns (1+2+...+2+1, endpoints
