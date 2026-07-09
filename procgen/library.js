@@ -166,8 +166,9 @@ export const DEFAULT_OBSTACLES = Object.freeze({
  * the forward simulator carries a Map).
  *
  * Supports the subset of rules the v1 maze pipeline produces and a
- * few common AP-side constructs: Has, HasAll, HasAny, And, Or,
- * True_, False_. Anything outside this set is treated as unsatisfied
+ * few common AP-side constructs: Has, HasAll, HasAny,
+ * HasFromListUnique, And, Or, True_, False_. Anything outside this
+ * set is treated as unsatisfied
  * (returns false) — per top-down-driver.md §8's degradation
  * strategy: rather than throwing on a foreign rules.json, fall back
  * to "blocked" so the substrate's path-extraction / placement BFS
@@ -201,6 +202,19 @@ export function evaluateRuleAgainstInventory(rule, inventory) {
             const items = rule.args?.items ?? rule.args?.item_names ?? [];
             for (const item of items) {
                 if (inventory.has(item)) return true;
+            }
+            return false;
+        }
+        case 'HasFromListUnique': {
+            // At least `count` DISTINCT names from the list, ignoring
+            // duplicates of the same item. The jta substrate's loose
+            // count-based zone gates are built from this rule.
+            const items = rule.args?.item_names ?? rule.args?.items ?? [];
+            const required = rule.args?.count ?? 1;
+            if (required <= 0) return true;
+            let distinct = 0;
+            for (const item of items) {
+                if (inventoryCount(inventory, item) > 0 && ++distinct >= required) return true;
             }
             return false;
         }

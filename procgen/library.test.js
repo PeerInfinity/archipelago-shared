@@ -199,6 +199,22 @@ describe('isObstacleCleared / evaluateRuleAgainstInventory smoke (covered indire
         expect(evaluateRuleAgainstInventory(any, new Set())).toBe(false);
     });
 
+    it('evaluates HasFromListUnique by DISTINCT names held', () => {
+        const rule = { rule: 'HasFromListUnique', args: { item_names: ['a', 'b', 'c'], count: 2 } };
+        expect(evaluateRuleAgainstInventory(rule, new Set(['a', 'b']))).toBe(true);
+        expect(evaluateRuleAgainstInventory(rule, new Set(['a', 'c']))).toBe(true);
+        expect(evaluateRuleAgainstInventory(rule, new Set(['a']))).toBe(false);
+        // Duplicates of one name never satisfy a count of 2 — that is what
+        // distinguishes this from HasFromList.
+        expect(evaluateRuleAgainstInventory(rule, new Map([['a', 5]]))).toBe(false);
+        expect(evaluateRuleAgainstInventory(rule, new Map([['a', 1], ['c', 1]]))).toBe(true);
+        // Items outside the list don't count.
+        expect(evaluateRuleAgainstInventory(rule, new Set(['a', 'z']))).toBe(false);
+        // count <= 0 is vacuously true (matches rule_builder's _instantiate).
+        const zero = { rule: 'HasFromListUnique', args: { item_names: ['a'], count: 0 } };
+        expect(evaluateRuleAgainstInventory(zero, new Set())).toBe(true);
+    });
+
     it('treats unsupported rule constructs as unsatisfied (graceful degradation)', () => {
         // CountItem isn't in the local subset; instead of throwing,
         // the evaluator returns false so substrate placement / path
