@@ -4,6 +4,8 @@ Shared JavaScript utilities used by [Archipelago-CC](https://github.com/PeerInfi
 
 This repository is consumed as a git submodule at `frontend/modules/shared/` in the parent Archipelago-CC tree.
 
+**AI disclosure:** The code and documentation in this repository are predominantly AI-generated, written with [Claude Code](https://claude.ai/code), as part of the [Archipelago-CC](https://github.com/PeerInfinity/Archipelago-CC) project.
+
 ## Contents
 
 Utilities here are deliberately small, dependency-free where possible, and designed to work both inside the host frontend and inside standalone substrate iframes. Notable modules:
