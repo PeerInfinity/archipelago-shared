@@ -58,6 +58,28 @@
  *                               //   customQueues: boolean,
  *                               //   executeVia?: 'playbackBot' }
  *
+ *     // Cross-substrate sharing declaration (optional). Declares which
+ *     // resource-channel categories this substrate participates in.
+ *     // Validated at register() time — unknown categories or malformed
+ *     // shapes throw. Two categories exist:
+ *     //   mana — the continuous shared-pool channel (drain/refill/
+ *     //     bonus/reset against the host's loop-mode mana). Presence
+ *     //     means the host resource-channel router accepts this
+ *     //     substrate's channel events and the shared charge/XP/
+ *     //     OOM-reset helper recognizes its id.
+ *     //       loopActionDelegation (optional boolean) — the loops
+ *     //         queue delegates action execution + per-step charging
+ *     //         for this substrate's manaEnabled regions to the
+ *     //         substrate's own walker instead of the queue's flat
+ *     //         tick-progress model.
+ *     //   items — discrete shared consumables, namespaced
+ *     //     `<substrateId>/<type>`. The declaration carries the
+ *     //     shareable type list as EITHER a static `types` array OR a
+ *     //     `getTypes()` provider (exactly one of the two). Grant
+ *     //     routing validates against it.
+ *     sharing,                  // { mana?: { loopActionDelegation?: boolean },
+ *                               //   items?: { types: string[] } | { getTypes: () => string[] } }
+ *
  *     // Build-time — required for substrates that drive procgen
  *     generateRegionCore,       // (input) -> { world, exits_placed, ... }
  *     placeFromItems,           // (world, input) -> { placed_items, placed_obstacles }
@@ -105,6 +127,69 @@
  * substrate that only supplies build-time adapters.
  */
 
+const SHARING_CATEGORIES = ['mana', 'items'];
+
+/**
+ * Validate an entry's optional `sharing` declaration (see the entry-shape
+ * comment above). Throws with a substrate-id-prefixed message on any
+ * malformed shape so misdeclarations fail loudly at register() time.
+ */
+function validateSharingDeclaration(entry) {
+    const sharing = entry.sharing;
+    if (sharing === undefined) return;
+    const prefix = `substrateRegistry.register('${entry.id}').sharing`;
+    if (!sharing || typeof sharing !== 'object' || Array.isArray(sharing)) {
+        throw new Error(`${prefix}: must be an object`);
+    }
+    for (const key of Object.keys(sharing)) {
+        if (!SHARING_CATEGORIES.includes(key)) {
+            throw new Error(
+                `${prefix}: unknown category '${key}' (known: ${SHARING_CATEGORIES.join(', ')})`,
+            );
+        }
+    }
+    const mana = sharing.mana;
+    if (mana !== undefined) {
+        if (!mana || typeof mana !== 'object' || Array.isArray(mana)) {
+            throw new Error(`${prefix}.mana: must be an object`);
+        }
+        for (const key of Object.keys(mana)) {
+            if (key !== 'loopActionDelegation') {
+                throw new Error(`${prefix}.mana: unknown field '${key}'`);
+            }
+        }
+        if (mana.loopActionDelegation !== undefined
+            && typeof mana.loopActionDelegation !== 'boolean') {
+            throw new Error(`${prefix}.mana.loopActionDelegation: must be a boolean`);
+        }
+    }
+    const items = sharing.items;
+    if (items !== undefined) {
+        if (!items || typeof items !== 'object' || Array.isArray(items)) {
+            throw new Error(`${prefix}.items: must be an object`);
+        }
+        for (const key of Object.keys(items)) {
+            if (key !== 'types' && key !== 'getTypes') {
+                throw new Error(`${prefix}.items: unknown field '${key}'`);
+            }
+        }
+        const hasTypes = items.types !== undefined;
+        const hasGetTypes = items.getTypes !== undefined;
+        if (hasTypes === hasGetTypes) {
+            throw new Error(`${prefix}.items: exactly one of 'types' or 'getTypes' required`);
+        }
+        if (hasTypes && (
+            !Array.isArray(items.types)
+            || items.types.some((t) => typeof t !== 'string' || t.length === 0)
+        )) {
+            throw new Error(`${prefix}.items.types: must be an array of non-empty strings`);
+        }
+        if (hasGetTypes && typeof items.getTypes !== 'function') {
+            throw new Error(`${prefix}.items.getTypes: must be a function`);
+        }
+    }
+}
+
 class SubstrateRegistry {
     constructor() {
         this.entries = new Map();
@@ -120,6 +205,7 @@ class SubstrateRegistry {
         if (this.entries.has(entry.id)) {
             throw new Error(`substrateRegistry.register: substrate '${entry.id}' already registered`);
         }
+        validateSharingDeclaration(entry);
         this.entries.set(entry.id, entry);
     }
 
