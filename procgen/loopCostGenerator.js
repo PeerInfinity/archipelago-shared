@@ -30,10 +30,49 @@
  * browser pipeline and in tests.
  */
 
+import { substrateRegistry } from './substrateRegistry.js';
+
 const DEFAULT_PLAYER_ID = '1';
 
 const VALID_REGION_XP_EFFECTS = ['cost', 'speed', 'both', 'none'];
 const DEFAULT_REGION_XP_EFFECT = 'cost';
+
+/**
+ * Mana per second charged while live-playing a SUMMARY substrate's region
+ * (runner, bounce — M5, user default 2026-07-23). Lives here, with the
+ * rest of the generated-sidecar vocabulary, so the generator and the
+ * runtime reader (loops/costDataManager.js) cannot drift apart; this
+ * module is pure, so importing it costs the runtime nothing.
+ */
+export const DEFAULT_TIME_DRAIN_PER_SECOND = 1;
+
+/**
+ * The set of regions belonging to SUMMARY substrates (M5). Those regions
+ * are priced by TIME: a per-action cost would be charged on top of the
+ * time drain, so the sidecar states a drain rate for them and no moveCost
+ * or location costs at all (ruling: summary substrates charge per action
+ * only where the data says so EXPLICITLY — which a generated sidecar must
+ * therefore not say by default).
+ *
+ * The substrate id comes from the preset sidecars; whether it is a summary
+ * substrate comes from its registry declaration, so this can never
+ * disagree with the runtime. An unregistered substrate (a headless run
+ * that never imported the libraries) reads as non-summary — today's
+ * behavior, which is the safe direction.
+ */
+function collectSummaryRegions(rulesJson, playerId) {
+    const out = new Set();
+    const sidecars = rulesJson?.preset_sidecars?.[playerId];
+    if (!sidecars || typeof sidecars !== 'object') return out;
+    for (const [regionName, entry] of Object.entries(sidecars)) {
+        const id = entry?.substrate;
+        if (!id) continue;
+        try {
+            if (substrateRegistry.get(id)?.loopSupport?.summaryRecording) out.add(regionName);
+        } catch { /* registry unavailable — treat as non-summary */ }
+    }
+    return out;
+}
 
 function _normalizeRegionXpEffect(effect) {
     return VALID_REGION_XP_EFFECTS.includes(effect) ? effect : DEFAULT_REGION_XP_EFFECT;
@@ -89,11 +128,18 @@ export function generateLoopCosts({
     const locationToRegion = buildLocationIndex(regions);
     const xpEffect = _normalizeRegionXpEffect(regionXpEffect);
 
+    const summaryRegions = collectSummaryRegions(rulesJson, playerId);
+    const locationToSummary = (locationName) => summaryRegions.has(locationToRegion.get(locationName));
+
     const costs = {
         version: '1.0',
         generatedAt: new Date().toISOString(),
         generatedFrom: sourceFileName,
-        regions: { [startRegion]: { moveCost: 0, xpEffect } },
+        regions: {
+            [startRegion]: summaryRegions.has(startRegion)
+                ? { timeDrainPerSecond: DEFAULT_TIME_DRAIN_PER_SECOND, xpEffect }
+                : { moveCost: 0, xpEffect },
+        },
         locations: {},
         defaultRegionCost,
         defaultLocationCost,
@@ -135,6 +181,15 @@ export function generateLoopCosts({
             const manaForRegions = maxMana / 2;
             let remaining = uncosted.length;
             for (const region of uncosted) {
+                if (summaryRegions.has(region)) {
+                    // Time-priced: a drain rate instead of a per-move cost.
+                    costs.regions[region] = {
+                        timeDrainPerSecond: DEFAULT_TIME_DRAIN_PER_SECOND, xpEffect,
+                    };
+                    assignedRegions.add(region);
+                    remaining -= 1;
+                    continue;
+                }
                 const cost = Math.max(1, Math.floor(manaForRegions / remaining));
                 costs.regions[region] = { moveCost: cost, xpEffect };
                 assignedRegions.add(region);
@@ -142,10 +197,12 @@ export function generateLoopCosts({
             }
         }
 
-        // Cost the location if not already costed.
+        // Cost the location if not already costed. Locations inside a
+        // summary region stay uncosted — the visit's time is their price.
         if (!assignedLocations.has(entry.locationName)) {
-            const locationCost = Math.max(1, Math.floor(maxMana / 2));
-            costs.locations[entry.locationName] = locationCost;
+            if (!locationToSummary(entry.locationName)) {
+                costs.locations[entry.locationName] = Math.max(1, Math.floor(maxMana / 2));
+            }
             assignedLocations.add(entry.locationName);
         }
 
@@ -154,7 +211,7 @@ export function generateLoopCosts({
         maxMana += entry.itemsReceived * manaPerItem;
     }
 
-    fillDefaults(costs, regions, assignedRegions, assignedLocations);
+    fillDefaults(costs, regions, assignedRegions, assignedLocations, summaryRegions);
     return costs;
 }
 
@@ -249,11 +306,18 @@ function extractLocationEntries(sphereLog, playerId) {
     return out;
 }
 
-function fillDefaults(costs, regions, assignedRegions, assignedLocations) {
+function fillDefaults(costs, regions, assignedRegions, assignedLocations, summaryRegions = new Set()) {
     const xpEffect = _normalizeRegionXpEffect(costs.defaultRegionXpEffect);
     // Uncosted regions: highest neighbor cost, or defaultRegionCost.
+    // Summary regions are time-priced instead (M5).
     for (const [name, data] of Object.entries(regions)) {
         if (assignedRegions.has(name)) continue;
+        if (summaryRegions.has(name)) {
+            costs.regions[name] = {
+                timeDrainPerSecond: DEFAULT_TIME_DRAIN_PER_SECOND, xpEffect,
+            };
+            continue;
+        }
         let highest = 0;
         for (const exit of data?.exits ?? []) {
             const neighborCost = costs.regions[exit.connected_region]?.moveCost;
@@ -271,6 +335,7 @@ function fillDefaults(costs, regions, assignedRegions, assignedLocations) {
         ? Math.max(costs.defaultLocationCost, ...existing)
         : costs.defaultLocationCost;
     for (const [name, data] of Object.entries(regions)) {
+        if (summaryRegions.has(name)) continue; // time-priced: locations stay free
         for (const loc of data?.locations ?? []) {
             const locName = typeof loc === 'string' ? loc : loc?.name;
             if (!locName || assignedLocations.has(locName)) continue;

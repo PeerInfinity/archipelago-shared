@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { generateLoopCosts, _internal } from './loopCostGenerator.js';
+import { substrateRegistry } from './substrateRegistry.js';
 
 const { bfsRegions, buildAdjacency, buildLocationIndex, extractLocationEntries } = _internal;
 
@@ -304,5 +305,82 @@ describe('loopCostGenerator — pure cost simulation', () => {
             expect(entries[2].itemsReceived).toBe(1);
             expect(entries[3].locationName).toBe('L3');
         });
+    });
+});
+
+describe('loopCostGenerator — SUMMARY regions are time-priced (M5)', () => {
+    // A generated sidecar must not silently make "explicit-only" mean
+    // "everything is explicit": summary substrates (runner, bounce) are
+    // priced by TIME, so per-action costs on their regions would be charged
+    // on top of the drain. The substrate id comes from the preset sidecars;
+    // whether it is a summary substrate comes from its registry declaration.
+    function withSidecars(rules, sidecars) {
+        return { ...rules, preset_sidecars: { '1': sidecars } };
+    }
+
+    function registerSummary(id = 'summary_sub') {
+        substrateRegistry.register({
+            id, label: id, panelComponentType: 'p', loadRegionEvent: `${id}:load`,
+            loopSupport: { manual: true, record: true, playback: true, summaryRecording: true },
+        });
+    }
+
+    const RULES = {
+        Menu: { exits: [{ name: 'to_a', connected_region: 'A' }], locations: [] },
+        A: { exits: [{ name: 'to_b', connected_region: 'B' }], locations: [{ name: 'Loc1' }] },
+        B: { exits: [], locations: [{ name: 'Loc2' }] },
+    };
+
+    beforeEach(() => {
+        substrateRegistry.clear?.();
+    });
+    afterEach(() => {
+        substrateRegistry.clear?.();
+    });
+
+    it('emits a drain rate and no per-action costs for a summary region', () => {
+        registerSummary();
+        const rules = withSidecars(makeRules(RULES, 'Menu'), {
+            A: { substrate: 'summary_sub' },
+            B: { substrate: 'text_adventure' },
+        });
+        const costs = generateLoopCosts({
+            rulesJson: rules,
+            sphereLog: [stateUpdate(0, ['Loc1']), stateUpdate(1, ['Loc2'])],
+        });
+
+        expect(costs.regions.A.timeDrainPerSecond).toBe(1);
+        expect(costs.regions.A.moveCost).toBeUndefined();
+        expect(costs.locations.Loc1).toBeUndefined();
+
+        // The non-summary region is costed exactly as before.
+        expect(typeof costs.regions.B.moveCost).toBe('number');
+        expect(typeof costs.locations.Loc2).toBe('number');
+    });
+
+    it('time-prices a summary START region too', () => {
+        registerSummary();
+        const rules = withSidecars(makeRules(RULES, 'Menu'), { Menu: { substrate: 'summary_sub' } });
+        const costs = generateLoopCosts({ rulesJson: rules, sphereLog: [stateUpdate(0, ['Loc1'])] });
+        expect(costs.regions.Menu.timeDrainPerSecond).toBe(1);
+        expect(costs.regions.Menu.moveCost).toBeUndefined();
+    });
+
+    it('an UNREGISTERED substrate keeps today\'s behavior (safe direction)', () => {
+        // No registry entry — a headless run that never imported the
+        // substrate libraries must not silently zero out every cost.
+        const rules = withSidecars(makeRules(RULES, 'Menu'), { A: { substrate: 'summary_sub' } });
+        const costs = generateLoopCosts({ rulesJson: rules, sphereLog: [stateUpdate(0, ['Loc1'])] });
+        expect(typeof costs.regions.A.moveCost).toBe('number');
+        expect(typeof costs.locations.Loc1).toBe('number');
+    });
+
+    it('is inert without preset sidecars', () => {
+        registerSummary();
+        const costs = generateLoopCosts({
+            rulesJson: makeRules(RULES, 'Menu'),
+            sphereLog: [stateUpdate(0, ['Loc1'])],
+        });
+        expect(typeof costs.regions.A.moveCost).toBe('number');
     });
 });
