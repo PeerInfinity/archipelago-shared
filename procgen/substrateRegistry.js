@@ -43,7 +43,7 @@
  *     //     (manual checkbox / manual entries).
  *     //   customQueues — saved substrate-native action queues can be
  *     //     recorded and replayed for the region.
- *     //   executeVia (optional) — 'playbackBot' makes the loops
+ *     //   executeVia (optional) — 'solver' makes the loops
  *     //     queue execute the region's queueActions by driving the
  *     //     substrate's PlaybackController.walkTo (the queue parks
  *     //     until the resulting locationCheck / regionChanged event
@@ -56,7 +56,7 @@
  *     loopSupport,              // { queueActions: string[],
  *                               //   manual: boolean,
  *                               //   customQueues: boolean,
- *                               //   executeVia?: 'playbackBot' }
+ *                               //   executeVia?: 'solver' }
  *
  *     // Cross-substrate sharing declaration (optional). Declares which
  *     // resource-channel categories this substrate participates in.
