@@ -164,6 +164,37 @@ describe('pickNextTarget', () => {
         const target = pickNextTarget(model, { inventory: ['Key'], checkedLocations: ['Free Location'] });
         expect(target?.location).toBe('Locked Location');
     });
+
+    it('accepts a Map<name,count> inventory — counts survive, and a count gate needs the count', () => {
+        // generateSphereLog carries a Map so `Has` with args.count > 1
+        // evaluates; pickNextTarget must read the SAME shape. Before this,
+        // `new Set(map)` produced a set of [name, count] pairs and every
+        // lookup missed — the walker saw an empty world instead of an error.
+        const doc = {
+            regions: {
+                '1': {
+                    Start: {
+                        name: 'Start',
+                        exits: [{ name: 'deep', connected_region: 'Deep', access_rule: { rule: 'Has', args: { item_name: 'Key', count: 2 } } }],
+                        locations: [],
+                    },
+                    Deep: {
+                        name: 'Deep',
+                        exits: [],
+                        locations: [{ name: 'Deep Location', access_rule: { rule: 'True_' }, item: { name: 'Prize', advancement: true } }],
+                    },
+                },
+            },
+            start_regions: { '1': { default: ['Start'] } },
+        };
+        const model = buildAccessibilityModel(doc);
+        expect(pickNextTarget(model, {
+            inventory: new Map([['Key', 1]]), checkedLocations: new Set(),
+        })).toBe(null);
+        expect(pickNextTarget(model, {
+            inventory: new Map([['Key', 2]]), checkedLocations: new Set(),
+        })?.location).toBe('Deep Location');
+    });
 });
 
 // --- generateSphereLog ---

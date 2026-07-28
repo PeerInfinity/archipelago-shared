@@ -198,8 +198,19 @@ export function pickNextTarget(model, state) {
     return pool[0];
 }
 
+// Normalize an inventory / checked-location argument into something
+// `evaluateRuleAgainstInventory` and `.has()` both understand.
+//
+// A Map<name, count> passes through UNCHANGED. generateSphereLog below
+// carries exactly that shape (counts must accumulate so `Has` with
+// args.count > 1 evaluates correctly), and `new Set(map)` would build a
+// set of [key, value] PAIRS — every `has(itemName)` would then be false
+// and the caller would see "nothing is reachable" rather than an error.
+// Callers holding counts (the atlas maze bot, any future count-gated
+// world) can now hand pickNextTarget the same Map the sphere-log
+// generator uses.
 function toSet(value) {
-    if (value instanceof Set) return value;
+    if (value instanceof Set || value instanceof Map) return value;
     if (value == null) return new Set();
     return new Set(value);
 }
