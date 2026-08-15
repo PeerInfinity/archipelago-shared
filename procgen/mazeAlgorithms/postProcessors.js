@@ -18,7 +18,7 @@
 import {
     TILE_FLOOR, TILE_WALL,
     getTile, setTile,
-} from '../../../mazeRoom/mazeRoomEngine.js';
+} from './gridTiles.js';
 
 const DELTAS = [
     { dx: 0, dy: -1 },

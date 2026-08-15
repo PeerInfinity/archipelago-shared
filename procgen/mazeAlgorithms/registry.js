@@ -5,10 +5,17 @@
  * up by id; the maze substrate dispatches on the id from the active
  * biome's `backend` field.
  *
- * Keeping the registry in shared/procgen rather than mazeRoom/ leaves
- * room for a future grid-based substrate (e.g. a tile-room generator)
- * to register its own backends here. Today only the maze substrate
- * uses it.
+ * Keeping the registry in shared/procgen rather than mazeRoom/ left room
+ * for a future grid-based substrate (e.g. a tile-room generator) to
+ * register its own backends here — and as of the constructive-mode arc's
+ * shared refactor that room is real: `recursive_backtracker`, `kruskals`
+ * and `recursive_division` live beside this file and depend only on the
+ * grid contract in `gridTiles.js`, not on the maze substrate. The maze's
+ * `corridor_only` / `random_walls` / `empty` still live in
+ * `mazeRoom/mazeAlgorithms/` — the first two need the maze simulator.
+ *
+ * `listBackends()` returns INSERTION order, which is the import order in
+ * `mazeRoom/mazeAlgorithms/index.js`.
  *
  * See docs/json/developer/procgen/maze.md ("Biomes and wall backends").
  */

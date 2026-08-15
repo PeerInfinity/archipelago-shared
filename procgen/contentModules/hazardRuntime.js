@@ -38,7 +38,7 @@
  *  entrance.
  */
 
-import { TILE_FLOOR } from '../../../mazeRoom/mazeRoomEngine.js';
+import { TILE_FLOOR } from '../mazeAlgorithms/gridTiles.js';
 import {
     HAZARD_SHAPE_LINEAR,
     HAZARD_SHAPE_LOOP,

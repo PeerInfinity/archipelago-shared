@@ -23,9 +23,14 @@
  *   4. connectFixedTiles — entrance + each exit gets a minimum
  *      passage to the surrounding cells.
  *   5. validation safety net (caller's responsibility).
+ *
+ * Substrate-independent: everything here reads and writes through the grid
+ * contract in `gridTiles.js` (`{width, height, tiles: Int8Array,
+ * entrance: {x,y}, exits: iterable of {x,y}}` + `rng.next()`) and knows
+ * nothing about the maze substrate's world model.
  */
 
-import { TILE_FLOOR, TILE_WALL, getTile, setTile } from '../../../mazeRoom/mazeRoomEngine.js';
+import { TILE_FLOOR, TILE_WALL, getTile, setTile } from './gridTiles.js';
 
 export function cellDimensions(world) {
     return {

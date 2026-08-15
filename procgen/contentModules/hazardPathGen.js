@@ -22,7 +22,7 @@
  * library (3×3 ring, 2×4 perimeter) for v1.
  */
 
-import { TILE_FLOOR } from '../../../mazeRoom/mazeRoomEngine.js';
+import { TILE_FLOOR } from '../mazeAlgorithms/gridTiles.js';
 
 export const LINEAR_LENGTHS = [2, 3, 5];
 export const LOOP_LENGTHS = [4, 8];
