@@ -11,8 +11,24 @@
  *    than `threshold` with walls. No v1 biome uses this; ships
  *    alongside braid because they're a natural pair.
  *
- * Both refuse to touch entrance/exit tiles, so worst-case they
+ *  - chambers({k, size, margin}) stamps `k` open size x size squares
+ *    onto whatever the backend built. ⛓ CONSTRUCTIVE-MODE arc, slice 7
+ *    (`NewDocs/plans/seedling-constructive-mode-kickoff.md` §3.6 item 3):
+ *    a carved room is corridor, and every AREA template in either
+ *    substrate's pass-2 palette (a pool, a pit patch, a lane) needs
+ *    somewhere wider than one tile to be. It is the first post-processor
+ *    written for the constructive mode rather than inherited from the
+ *    region generator.
+ *
+ * All three refuse to touch entrance/exit tiles, so worst-case they
  * leave the input unchanged but never break feasibility.
+ *
+ * ⛔ AND `chambers` IS **MONOTONE** — it only ever turns wall into floor.
+ * That is not a description, it is the whole reason it needs no
+ * connectivity repair: adding walkable cells cannot disconnect two cells
+ * that were already connected, so a room the backend certified stays
+ * certified. `braid` shares the property; `pruneDeadEnds` does not (it
+ * fills), which is why that one has to reason about dead ends.
  */
 
 import {
@@ -147,9 +163,103 @@ export function pruneDeadEnds(world, params, _rng) {
     return { filled };
 }
 
+/**
+ * ⛓⛓⛓ CHAMBERS — `k` small OPEN SQUARES stamped onto a carved layout.
+ *
+ * CONSTRUCTIVE-MODE arc, slice 7. See the file docblock for WHY; this is
+ * HOW, and every choice below is one a caller can rely on.
+ *
+ *  · `k`      how many centres to draw. **`k <= 0` returns before touching
+ *             `rng`** — the knob's default is off, and "off" has to mean
+ *             the identical draw stream, or every existing seed->level pair
+ *             would expire the day the knob was declared.
+ *  · `size`   the side of the stamped square. **ODD ONLY**, because the
+ *             stamp is centred on the drawn cell and an even square has no
+ *             centre — that refuses by name rather than silently drifting
+ *             half a tile.
+ *  · `margin` how many cells in from the grid edge may NEVER be carved.
+ *             ⛔ A CALLER FACT, not a default: the Seedling binding hands
+ *             its room in with the border ring already walled and checks on
+ *             the way out that the carve left it walled (a floor tile on
+ *             the border is not a room — nothing stops a player walking off
+ *             a floor that ends), so it passes 1. The maze has no wall ring
+ *             and passes 0. A post-processor that guessed would be wrong in
+ *             one of the two substrates.
+ *
+ * ⛔ THE CENTRES ARE DRAWN FROM ONE LIST, TAKEN ONCE. The floor cells are
+ * enumerated BEFORE the first stamp, so the k draws are independent of each
+ * other and a stamp cannot widen the pool the next draw reads. Two draws
+ * may land on the same cell; that is a smaller room, not a defect, and
+ * re-listing after each stamp would make the k-th draw depend on the
+ * geometry of the first, which is the harder thing to reason about for no
+ * gain.
+ *
+ * ⛔ IT IS CLAMPED, NOT SKIPPED. A centre whose square runs off the grid
+ * (or into the margin) stamps the part that fits. Requiring the whole
+ * square to fit would silently exclude every corridor cell near a wall —
+ * i.e. most of a carved room — and the caller asked for area, not for a
+ * guarantee about the shape of it.
+ *
+ * ⛔ PROTECTED TILES ARE UNTOUCHED **BY CONSTRUCTION**: this only ever
+ * writes FLOOR, and the entrance and the exits already are floor when a
+ * backend hands the grid over. There is no `isProtected` guard here
+ * because there is nothing for it to prevent.
+ *
+ * @returns {{stamped:number, opened:number}} centres drawn, wall cells turned
+ *   to floor.
+ */
+export function chambers(world, params, rng) {
+    const k = params?.k ?? 0;
+    const size = params?.size ?? 3;
+    const margin = params?.margin ?? 0;
+    if (!Number.isInteger(k)) {
+        throw new Error(`chambers: k must be an integer, got ${JSON.stringify(k)}.`);
+    }
+    if (k <= 0) return { stamped: 0, opened: 0 };
+    if (!Number.isInteger(size) || size < 1 || size % 2 === 0) {
+        throw new Error(`chambers: size must be an ODD positive integer, got `
+            + `${JSON.stringify(size)} — the stamp is centred on the drawn cell, and an `
+            + 'even square has no centre.');
+    }
+    if (!Number.isInteger(margin) || margin < 0) {
+        throw new Error(`chambers: margin must be a non-negative integer, got `
+            + `${JSON.stringify(margin)}.`);
+    }
+    const centres = [];
+    for (let y = 0; y < world.height; y++) {
+        for (let x = 0; x < world.width; x++) {
+            if (getTile(world, x, y) === TILE_FLOOR) centres.push({ x, y });
+        }
+    }
+    if (centres.length === 0) return { stamped: 0, opened: 0 };
+    const half = (size - 1) / 2;
+    const loX = margin;
+    const loY = margin;
+    const hiX = world.width - 1 - margin;
+    const hiY = world.height - 1 - margin;
+    let stamped = 0;
+    let opened = 0;
+    for (let i = 0; i < k; i++) {
+        const c = centres[Math.floor(rng.next() * centres.length)];
+        stamped += 1;
+        for (let dy = -half; dy <= half; dy++) {
+            for (let dx = -half; dx <= half; dx++) {
+                const x = c.x + dx;
+                const y = c.y + dy;
+                if (x < loX || y < loY || x > hiX || y > hiY) continue;
+                if (getTile(world, x, y) === TILE_FLOOR) continue;
+                setTile(world, x, y, TILE_FLOOR);
+                opened += 1;
+            }
+        }
+    }
+    return { stamped, opened };
+}
+
 const POST_PROCESSORS = new Map([
     ['braid', braid],
     ['pruneDeadEnds', pruneDeadEnds],
+    ['chambers', chambers],
 ]);
 
 export function getPostProcessor(id) {
