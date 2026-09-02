@@ -31,6 +31,18 @@
  *     // / no controller available" and the bot should no-op.
  *     getPlaybackController,    // () -> PlaybackController | null
  *
+ *     // Runtime — the action LABELLER (optional). How this substrate says
+ *     // ONE shared actionQueue entry out loud: `describeAction(entry)` →
+ *     // a short string ('move E', 'Chop Wood', 'check Chest'). Recordings
+ *     // store no `label` — it is DERIVED from actionType/actionId and the
+ *     // substrate is the only thing that knows the derivation — so every
+ *     // surface that renders an entry (a panel, a tooltip, the loops item
+ *     // annotation folder, a future cross-substrate queue viewer) asks the
+ *     // entry's substrate rather than carrying its own copy of the wording.
+ *     // ABSENT ⇒ callers fall back to the entry's own `label`, then to its
+ *     // raw actionId.
+ *     describeAction,           // (entry) -> string
+ *
  *     // Runtime — loop-mode capabilities (optional). Declares which
  *     // loops-panel affordances this substrate's regions get. The
  *     // loops UI gates its per-region controls on this field:

@@ -1,6 +1,6 @@
 // ExecutionSnapshot - frozen copy of a queue for execution, with runtime state tracking
 // The "current list" in the dual-queue pattern (next list = ActionQueue, current list = this)
-import { ActionState } from './actionTypes.js';
+import { ActionState, mergeStatus } from './actionTypes.js';
 
 /**
  * @typedef {object} RuntimeStatus
@@ -8,14 +8,15 @@ import { ActionState } from './actionTypes.js';
  * @property {ActionState} state
  * @property {number} loopsCompleted
  * @property {string} [error]
- * @property {number} [energyBefore] - Energy when entry started
- * @property {number} [energyAfter] - Energy when entry completed
- * @property {number} [actualEnergyCost] - energyBefore - energyAfter
- * @property {object} [skillsBefore] - { skillId: fractionalLevel }
- * @property {object} [actualSkillGains] - { skillId: { name, gained } }
  * @property {number} [startTime] - Date.now() when started
  * @property {number} [endTime] - Date.now() when completed
  * @property {number} [actualTimeMs] - endTime - startTime
+ * @property {object} [actuals] - What the SUBSTRATE measured while the entry
+ *   ran. Open-ended by design: this module is game-agnostic and must not
+ *   declare one game's economy. jta fills
+ *   `{energyBefore, energyAfter, actualEnergyCost, skillsBefore,
+ *     actualSkillGains}`; another substrate fills its own. Updates MERGE into
+ *   it (see updateStatus), because a substrate writes it across several passes.
  */
 
 export class ExecutionSnapshot {
@@ -118,13 +119,17 @@ export class ExecutionSnapshot {
     }
 
     /**
+     * Apply a status update. `actuals` MERGES rather than replaces — a
+     * substrate fills it in several passes (before the entry, after it, and
+     * retroactively from authoritative state), so an assign would drop the
+     * earlier ones.
      * @param {string} entryId
      * @param {Partial<RuntimeStatus>} update
      */
     updateStatus(entryId, update) {
         const status = this.#statuses.get(entryId);
         if (!status) return;
-        Object.assign(status, update);
+        mergeStatus(status, update);
     }
 
     /**
@@ -149,6 +154,7 @@ export class ExecutionSnapshot {
             status.state = ActionState.PENDING;
             status.loopsCompleted = 0;
             status.error = undefined;
+            status.actuals = undefined;
         }
     }
 
