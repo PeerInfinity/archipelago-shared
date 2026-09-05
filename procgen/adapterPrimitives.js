@@ -25,10 +25,19 @@
  * docs/json/developer/procgen/text-adventure.md.
  */
 
-// Tile-grid adapter functions. Implementations live in mazeRoom/ and
-// procgenPipeline/; this module re-exports them under substrate-
-// neutral names so registry entries don't have to mention `maze` in
-// their imports just to use the tile-grid primitives.
+// Tile-grid adapter functions. Every implementation lives in `mazeRoom/`;
+// this module re-exports them under substrate-neutral names so registry
+// entries don't have to mention `maze` in their imports just to use the
+// tile-grid primitives.
+//
+// ⛓ H3b (outer repo, APWORLD EDITOR HUB, 2026-09-05). `tileGridSerializer`
+// used to come from `../../procgenPipeline/procgenPipelineEngine.js` while its
+// exact inverse `tileGridDeserializer` came from `../../mazeRoom/` — this file
+// reached into the PIPELINE for half of a round trip, and importing it dragged
+// the 6,435-line pipeline engine in behind it. `serializeMazeWorld` now lives
+// beside `deserializeMazeWorld` in `mazeRoom/`, so both halves come from the
+// same place and this module's only outward reach is to that one substrate
+// (the inversion the layering note below describes).
 
 export {
     generateRegionCore as spatialCore,
@@ -40,4 +49,4 @@ export {
 
 export {
     serializeMazeWorld as tileGridSerializer,
-} from '../../procgenPipeline/procgenPipelineEngine.js';
+} from '../../mazeRoom/mazeSerializer.js';

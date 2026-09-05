@@ -15,7 +15,7 @@ import {
     extractPathsAndObstacles,
     deserializeMazeWorld,
 } from '../../mazeRoom/mazeRoomEngine.js';
-import { serializeMazeWorld } from '../../procgenPipeline/procgenPipelineEngine.js';
+import { serializeMazeWorld } from '../../mazeRoom/mazeSerializer.js';
 
 // The adapter-primitives catalog is the substrate-neutral surface
 // that registry entries compose from. Confirming each export resolves
@@ -45,7 +45,30 @@ describe('adapterPrimitives', () => {
         expect(tileGridDeserializer).toBe(deserializeMazeWorld);
     });
 
-    it('exposes tileGridSerializer as the pipeline serializeMazeWorld', () => {
+    it('exposes tileGridSerializer as the maze serializeMazeWorld', () => {
         expect(tileGridSerializer).toBe(serializeMazeWorld);
+    });
+
+    /**
+     * ⛓ H3b. The pairing is the point: `tileGridSerializer` and
+     * `tileGridDeserializer` are exact inverses, and until 2026-09-05 this
+     * catalog took them from two DIFFERENT modules in two different repos'
+     * worth of layering — the serializer from `procgenPipeline/`, the
+     * deserializer from `mazeRoom/`. A row that only checks each handle
+     * against its own import cannot see that split reappear, because a
+     * re-pointed import would move both sides of its own assertion. This row
+     * reads the SPECIFIER out of the source instead.
+     */
+    it('⛔ both halves of the round trip come from the same module', async () => {
+        const { readFileSync } = await import('node:fs');
+        const { fileURLToPath } = await import('node:url');
+        const src = readFileSync(fileURLToPath(new URL('./adapterPrimitives.js', import.meta.url)), 'utf8');
+        const specs = [...src.matchAll(/^\s*(?:import|export)\b[^'"]*from\s*['"]([^'"]+)['"]/gm)]
+            .map((m) => m[1]);
+        expect(specs.length, 'the scan found no specifiers — it lost its subject').toBeGreaterThan(0);
+        expect(specs.some((sp) => sp.includes('procgenPipeline/')),
+            `adapterPrimitives.js reaches into the pipeline: ${specs.join(', ')}`).toBe(false);
+        expect(specs).toContain('../../mazeRoom/mazeSerializer.js');
+        expect(specs).toContain('../../mazeRoom/mazeRoomEngine.js');
     });
 });
