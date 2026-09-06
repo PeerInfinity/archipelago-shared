@@ -47,6 +47,42 @@ const DEFAULT_REGION_XP_EFFECT = 'cost';
 export const DEFAULT_TIME_DRAIN_PER_SECOND = 1;
 
 /**
+ * ⚖ THE COST VOCABULARY'S DEFAULTS, EXPORTED — user ruling 2026-09-06:
+ * *"I want the updated default location cost of 10 to be an exported constant,
+ * not a block field update. In general, I want the code to use exported
+ * constants, not hardcoded numbers."*
+ *
+ * These are the numbers a cost block falls back to when it names no value for
+ * a region or a location, AND the numbers the runtime charges when no block is
+ * loaded at all. They lived as five independent hardcoded copies across
+ * `loops/costDataManager.js`, `loops/loopState.js`, `loops/loopUI.js` (twice)
+ * and `loopStats/queueAnalyzer.js`, which is how the store's location fallback
+ * (100) and the generator's (10) came to disagree. One definition, here, beside
+ * the rest of the generated-block vocabulary; every reader imports it.
+ *
+ * ⚠ `DEFAULT_LOCATION_COST` is **10**, not the runtime's historical 100 — that
+ * is the ruling, and it moves what a world WITHOUT a block charges for a
+ * location check.
+ */
+export const DEFAULT_REGION_COST = 50;
+export const DEFAULT_LOCATION_COST = 10;
+
+/**
+ * Explore is priced as a multiple of the region's move cost — the generic
+ * model, stated once. Read by `loopState._calculateActionCost` ('customAction'
+ * = region cost × this), by `loopState._summaryBaseCost`, and by the planner's
+ * explore loop and its defaults fill (an unvisited location is priced at its
+ * region's cost × this, "matching explore cost ratio").
+ */
+export const DEFAULT_EXPLORE_MULTIPLIER = 2;
+
+/** Mana a simulated loop starts with, before any item boost. */
+export const DEFAULT_STARTING_MAX_MANA = 100;
+
+/** Max mana added per inventory item received, in the simulation. */
+export const DEFAULT_MANA_PER_ITEM = 10;
+
+/**
  * The set of regions belonging to SUMMARY substrates (M5). Those regions
  * are priced by TIME: a per-action cost would be charged on top of the
  * time drain, so the sidecar states a drain rate for them and no moveCost
@@ -83,10 +119,10 @@ function _normalizeRegionXpEffect(effect) {
  * @param {Object} args.rulesJson — the source rules.json
  * @param {Array}  args.sphereLog — parsed sphere log entries
  * @param {string} [args.playerId='1']
- * @param {number} [args.startingMaxMana=100]
- * @param {number} [args.manaPerItem=10]
- * @param {number} [args.defaultRegionCost=50]
- * @param {number} [args.defaultLocationCost=10]
+ * @param {number} [args.startingMaxMana=DEFAULT_STARTING_MAX_MANA]
+ * @param {number} [args.manaPerItem=DEFAULT_MANA_PER_ITEM]
+ * @param {number} [args.defaultRegionCost=DEFAULT_REGION_COST]
+ * @param {number} [args.defaultLocationCost=DEFAULT_LOCATION_COST]
  * @param {'cost'|'speed'|'both'|'none'} [args.regionXpEffect='cost']
  *        Per-region XP effect mode. Stamped on every region entry as
  *        `xpEffect`, plus written to `defaultRegionXpEffect` at the
@@ -100,10 +136,10 @@ export function generateLoopCosts({
     rulesJson,
     sphereLog,
     playerId = DEFAULT_PLAYER_ID,
-    startingMaxMana = 100,
-    manaPerItem = 10,
-    defaultRegionCost = 50,
-    defaultLocationCost = 10,
+    startingMaxMana = DEFAULT_STARTING_MAX_MANA,
+    manaPerItem = DEFAULT_MANA_PER_ITEM,
+    defaultRegionCost = DEFAULT_REGION_COST,
+    defaultLocationCost = DEFAULT_LOCATION_COST,
     regionXpEffect = DEFAULT_REGION_XP_EFFECT,
     sourceFileName = null,
 } = {}) {
