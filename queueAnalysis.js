@@ -10,6 +10,7 @@ import {
   applyRegionXpCostEffect,
 } from '../loops/xpFormulas.js';
 import { getCostDataManager } from '../loops/index.js';
+import { START_REGION_MOVE_COST } from './procgen/loopCostGenerator.js';
 
 /** Maximum characters for truncated action names */
 export const ACTION_NAME_MAX_CHARS = 30;
@@ -22,11 +23,28 @@ export const BASE_COSTS = {
 };
 
 /**
- * Get base cost for an action, using costDataManager when available
+ * Get base cost for an action, using costDataManager when available.
+ *
+ * ⚖ 2026-09-06, model (A) — **THE START-REGION MOVE IS FREE BY RULE**, and the
+ * rule is tested BEFORE either branch below because it holds in both: whatever
+ * the loaded block says for the start region, and whatever the fallback table
+ * says when no block is loaded. This is the DISPLAY half of the rule
+ * `loopState._calculateActionCost` charges by — the two must not disagree about
+ * a number, and they share `START_REGION_MOVE_COST` so they cannot.
+ *
+ * `loopState` is optional and duck-typed: a caller that has no loop state (or a
+ * mock predating the rule) simply prices the move as before.
+ *
  * @param {Object} action - The action to calculate cost for
+ * @param {Object} [loopState] - The loop state, for `isStartRegion`
  * @returns {number} Base mana cost
  */
-export function getBaseCost(action) {
+export function getBaseCost(action, loopState) {
+  if (action?.type === 'regionMove'
+      && loopState?.isStartRegion?.(action.sourceRegion) === true) {
+    return START_REGION_MOVE_COST;
+  }
+
   const costDataManager = getCostDataManager();
 
   if (costDataManager?.isLoaded()) {
@@ -52,7 +70,7 @@ export function getBaseCost(action) {
  * @returns {Object} Cost breakdown: { baseCost, levelDiscount, itemPenalties, finalCost, level }
  */
 export function calculateActionCost(action, loopState) {
-  const baseCost = getBaseCost(action);
+  const baseCost = getBaseCost(action, loopState);
 
   let levelDiscount = 0;
   let finalCost = baseCost;
