@@ -44,6 +44,37 @@ export const DEFAULT_REGION_COST = 50;
 export const DEFAULT_LOCATION_COST = 10;
 
 /**
+ * What a `regionMove` costs when its SOURCE is a START region — the Menu hop.
+ *
+ * ⚖ user ruling 2026-09-06, model (A): *"advancing from the Menu costs no
+ * mana"*. The zero is a **RULE, not a price**: it holds whatever the loaded
+ * `loop_costs` block says, and it holds when no block is loaded at all. That is
+ * what retires the 50 the twelve hand-written EMPTY blocks were billing for the
+ * first move out of Menu — with no preset change, because the presets were
+ * never the thing that was wrong.
+ *
+ * TWO faces, one number:
+ *  - the WRITERS — `loopCostPlanner.js`'s `SimulatedState` assigns the start
+ *    region this cost while it simulates, and `loopCostGenerator.js`'s
+ *    `writeCostsByClass` is what stamps it into the emitted block (which is why
+ *    both cost models write `Menu: 0`);
+ *  - the READERS — the four sites that price a move out of a region:
+ *    `loopState._calculateActionCost` (the one that CHARGES), and the three
+ *    display estimates (`shared/queueAnalysis.getBaseCost`,
+ *    `loopUI._estimateActionCost`, `loopBlockBuilder`'s per-exit cost label).
+ *    Each asks `loopState.isStartRegion(sourceRegion)` and answers this.
+ *
+ * ⛔ The rule is about a `regionMove` ONLY. An `explore` (`customAction`) in a
+ * start region is priced as ever — the block builder hides Explore for start
+ * regions, so the corpus has no such action, and a location check in a start
+ * region likewise stays priced as today (no start region in the corpus has
+ * one). ⛔ It does not reach the SUMMARY branch either: a summary substrate is
+ * priced by TIME and states its own costs explicitly, which is the runtime's
+ * own rule and not this one.
+ */
+export const START_REGION_MOVE_COST = 0;
+
+/**
  * Explore is priced as a multiple of the region's move cost — the generic
  * model, stated once. Read by `loopState._calculateActionCost` ('customAction'
  * = region cost × this), by `loopState._summaryBaseCost`, and by the planner's

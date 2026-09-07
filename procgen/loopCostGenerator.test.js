@@ -24,6 +24,7 @@ import {
     DEFAULT_REGION_COST,
     DEFAULT_LOCATION_COST,
     DEFAULT_TIME_DRAIN_PER_SECOND,
+    START_REGION_MOVE_COST,
     _internal,
 } from './loopCostGenerator.js';
 import { substrateRegistry } from './substrateRegistry.js';
@@ -77,6 +78,38 @@ describe('loopCostGenerator — the block shape', () => {
         }, 'Start');
         const costs = generateLoopCosts({ rulesJson: rules, sphereLog: [] });
         expect(costs.regions.Start).toEqual({ moveCost: 0, xpEffect: 'cost' });
+    });
+});
+
+/**
+ * ⚖ user ruling 2026-09-06 (model (A)): a `regionMove` whose SOURCE is a start
+ * region — the Menu hop — is free BY RULE, whatever the block says. That rule
+ * has one WRITER (the planner, below) and four READERS in the host
+ * (`loopState._calculateActionCost`, `shared/queueAnalysis.getBaseCost`,
+ * `loopUI._estimateActionCost` and `loopBlockBuilder`'s per-exit cost label),
+ * and the point of the constant is that all five say the same NAME.
+ *
+ * ⚠ The two rows above stay pinned on the LITERAL 0 deliberately: a suite that
+ * reads only its own constant cannot see that constant move. The literal is the
+ * real datum ("free"), and the rows here are what prove the name is shared.
+ */
+describe('loopCostDefaults — START_REGION_MOVE_COST', () => {
+    it('is 0 — advancing out of a start region costs no mana', () => {
+        expect(START_REGION_MOVE_COST).toBe(0);
+    });
+
+    it('is re-exported from loopCostGenerator.js, the door every runtime reader imports', async () => {
+        const defaults = await import('./loopCostDefaults.js');
+        expect(defaults.START_REGION_MOVE_COST).toBe(0);
+        expect(START_REGION_MOVE_COST).toBe(defaults.START_REGION_MOVE_COST);
+    });
+
+    it('is the number the PLANNER writes for the start region', () => {
+        const rules = makeRules({
+            Start: { exits: [], locations: [] },
+        }, 'Start');
+        const costs = generateLoopCosts({ rulesJson: rules, sphereLog: [] });
+        expect(costs.regions.Start.moveCost).toBe(START_REGION_MOVE_COST);
     });
 });
 

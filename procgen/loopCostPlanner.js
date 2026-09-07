@@ -72,6 +72,7 @@ import {
   DEFAULT_REGION_COST,
   DEFAULT_LOCATION_COST,
   DEFAULT_STARTING_MAX_MANA,
+  START_REGION_MOVE_COST,
 } from './loopCostDefaults.js';
 
 /**
@@ -268,9 +269,13 @@ export class SimulatedState {
       });
     }
 
-    // Start region: cost 0, fully explored
+    // Start region: free by rule, fully explored. ⚖ 2026-09-06 — the zero the
+    // planner WRITES and the zero the runtime CHARGES for a move out of a start
+    // region are one rule, so they are one name: `START_REGION_MOVE_COST`.
+    // (Writer and readers sharing the constant is why `check-loop-costs-one-model`
+    // cannot drift away from `_calculateActionCost` on the start region.)
     if (startRegion) {
-      this.assignedRegionCosts.set(startRegion, { moveCost: 0 });
+      this.assignedRegionCosts.set(startRegion, { moveCost: START_REGION_MOVE_COST });
       this._markFullyExplored(startRegion);
     }
   }

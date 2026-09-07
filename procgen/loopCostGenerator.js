@@ -59,6 +59,7 @@ import {
     DEFAULT_EXPLORE_MULTIPLIER,
     DEFAULT_STARTING_MAX_MANA,
     DEFAULT_MANA_PER_ITEM,
+    START_REGION_MOVE_COST,
 } from './loopCostDefaults.js';
 
 const DEFAULT_PLAYER_ID = '1';
@@ -75,6 +76,7 @@ export {
     DEFAULT_EXPLORE_MULTIPLIER,
     DEFAULT_STARTING_MAX_MANA,
     DEFAULT_MANA_PER_ITEM,
+    START_REGION_MOVE_COST,
 };
 export {
     CostPlanner,
@@ -173,12 +175,13 @@ function normalizeRegionXpEffect(effect) {
  *            passed through verbatim. (Explicit-only is the M5 ruling; a
  *            generated block must not make "explicit" mean "everything".)
  *
- * The START region is `{moveCost: 0, xpEffect}` whatever its class, unless it is
- * SUMMARY (then the drain, as before). That zero is not a PRICE, it is the rule
- * that leaving the start region is free, and it is read by the HOST's queue
- * (`getRegionCost(startRegion)` for the first `regionMove`) rather than by the
- * substrate — so a NATIVE start region needs it too. In practice the start
- * region is `Menu`, which has no substrate at all.
+ * The START region is `{moveCost: START_REGION_MOVE_COST, xpEffect}` whatever
+ * its class, unless it is SUMMARY (then the drain, as before). That zero is not
+ * a PRICE, it is the rule that leaving the start region is free — which is why
+ * it is a NAMED constant shared with the four host sites that price a move
+ * (⚖ 2026-09-06, model (A)), and why since M1b the host applies the rule itself
+ * rather than trusting the block to carry it. A NATIVE start region needs the
+ * entry too. In practice the start region is `Menu`, which has no substrate.
  *
  * @param {Object} rawCosts        the planner's `getCostData()`
  * @param {Object} args
@@ -201,7 +204,7 @@ export function writeCostsByClass(rawCosts, {
 
     for (const [regionName, cls] of regionClasses.entries()) {
         if (regionName === startRegion && cls !== REGION_CLASS.SUMMARY) {
-            out.regions[regionName] = { moveCost: 0, xpEffect };
+            out.regions[regionName] = { moveCost: START_REGION_MOVE_COST, xpEffect };
             continue;
         }
         if (cls === REGION_CLASS.NATIVE) continue;
