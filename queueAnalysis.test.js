@@ -26,7 +26,10 @@ vi.mock('../loops/index.js', () => ({
 }));
 
 const { getBaseCost, calculateActionCost, BASE_COSTS } = await import('./queueAnalysis.js');
-const { START_REGION_MOVE_COST } = await import('./procgen/loopCostGenerator.js');
+const {
+  DEFAULT_EXPLORE_MULTIPLIER, DEFAULT_LOCATION_COST, DEFAULT_REGION_COST, START_REGION_MOVE_COST,
+} = await import('./procgen/loopCostGenerator.js');
+const { LoopState } = await import('../loops/loopState.js');
 
 /** A loop state that knows the rule; 'Menu' is the start region, as in every preset. */
 const loopStateWithRule = {
@@ -85,5 +88,53 @@ describe('queueAnalysis — the start-region move is free by rule', () => {
   it('prices exactly as before for a loop state that has no isStartRegion', () => {
     expect(getBaseCost(move('Menu'), loopStateWithoutRule)).toBe(50);
     expect(getBaseCost(move('Menu'), undefined)).toBe(50);
+  });
+});
+
+/**
+ * ⚖ user 2026-09-07: *"I also want to update the 100 location cost."*
+ *
+ * ⛔ THE DEFECT THIS PINS. `BASE_COSTS` typed `locationCheck: 100` while the
+ * runtime has charged `DEFAULT_LOCATION_COST` = 10 since L2 — measured on a
+ * world with no block: the panel displayed 100 for a check the queue billed 10.
+ * L2 moved the CHARGING copy and this DISPLAY copy typed its own number, so
+ * nothing could see them disagree. The parity row below is the one that can.
+ */
+describe('queueAnalysis — the no-block table is the charging fallback\'s constants', () => {
+  beforeEach(() => { store.loaded = false; });
+
+  it('BASE_COSTS names the exported constants', () => {
+    expect(BASE_COSTS).toEqual({
+      customAction: DEFAULT_REGION_COST,
+      locationCheck: DEFAULT_LOCATION_COST,
+      regionMove: DEFAULT_REGION_COST,
+    });
+    // The real datum, not the constant reading itself: a check falls back to 10.
+    expect(BASE_COSTS.locationCheck).toBe(10);
+  });
+
+  it('displays EXACTLY what loopState charges when no block is loaded', () => {
+    const ls = new LoopState();
+    const stub = {
+      isStartRegion: () => false,
+      getRegionXP: () => ({ level: 0, xp: 0, xpForNextLevel: 100 }),
+    };
+    ls.gameState = { ...stub, getState: () => stub };
+    const actions = [
+      { type: 'regionMove', sourceRegion: 'A', destinationRegion: 'B' },
+      { type: 'locationCheck', sourceRegion: 'A', locationName: 'Loc' },
+      { type: 'customAction', sourceRegion: 'A', actionName: 'explore' },
+    ];
+    for (const action of actions) {
+      expect(ls.costDataManager?.isLoaded?.()).toBeFalsy();
+      expect(getBaseCost(action, ls)).toBe(ls._calculateActionCost(action));
+    }
+  });
+
+  it('prices explore off the block by DEFAULT_EXPLORE_MULTIPLIER, not a typed 2', () => {
+    store.loaded = true;
+    store.regionCost = 21;
+    expect(getBaseCost({ type: 'customAction', sourceRegion: 'A' }, null))
+      .toBe(21 * DEFAULT_EXPLORE_MULTIPLIER);
   });
 });

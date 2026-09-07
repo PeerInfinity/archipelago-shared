@@ -10,16 +10,39 @@ import {
   applyRegionXpCostEffect,
 } from '../loops/xpFormulas.js';
 import { getCostDataManager } from '../loops/index.js';
-import { START_REGION_MOVE_COST } from './procgen/loopCostGenerator.js';
+import {
+  DEFAULT_EXPLORE_MULTIPLIER,
+  DEFAULT_LOCATION_COST,
+  DEFAULT_REGION_COST,
+  START_REGION_MOVE_COST,
+} from './procgen/loopCostGenerator.js';
 
 /** Maximum characters for truncated action names */
 export const ACTION_NAME_MAX_CHARS = 30;
 
-/** Fallback base costs when no cost data is loaded */
+/**
+ * Fallback base costs when no cost data is loaded — **THE SAME NAMES the
+ * charging fallback uses** (`loopState._calculateActionCost`'s no-data branch),
+ * ⚖ user ruling 2026-09-06/07: exported constants, never hardcoded numbers.
+ *
+ * ⛔ **`locationCheck` WAS A TYPED 100 AND THE RUNTIME HAS CHARGED 10 SINCE L2.**
+ * Measured before this change, on a world with no block: the panel displayed
+ * `100` for a check the queue then billed `10` — a 10× disagreement that
+ * survived L2 because L2 moved the CHARGING copy and this DISPLAY copy typed its
+ * own number. Reading `DEFAULT_LOCATION_COST` is what makes the two unable to
+ * drift again.
+ *
+ * ⚠ `customAction` is `DEFAULT_REGION_COST`, **not**
+ * `DEFAULT_REGION_COST × DEFAULT_EXPLORE_MULTIPLIER`. The no-data branch has
+ * always priced an explore at a plain region move (`loops.md`, "Fallback Costs":
+ * named, not changed), so ×2 here would introduce a fresh 2× disagreement in the
+ * other direction. The multiplier applies only where a block IS loaded, below,
+ * which is where it now appears by name.
+ */
 export const BASE_COSTS = {
-  customAction: 50,
-  locationCheck: 100,
-  regionMove: 50,
+  customAction: DEFAULT_REGION_COST,
+  locationCheck: DEFAULT_LOCATION_COST,
+  regionMove: DEFAULT_REGION_COST,
 };
 
 /**
@@ -54,13 +77,14 @@ export function getBaseCost(action, loopState) {
       case 'locationCheck':
         return costDataManager.getLocationCost(action.locationName);
       case 'customAction':
-        return costDataManager.getRegionCost(action.sourceRegion) * 2;
+        return costDataManager.getRegionCost(action.sourceRegion)
+          * DEFAULT_EXPLORE_MULTIPLIER;
       default:
-        return 50;
+        return DEFAULT_REGION_COST;
     }
   }
 
-  return BASE_COSTS[action.type] || 50;
+  return BASE_COSTS[action.type] || DEFAULT_REGION_COST;
 }
 
 /**
