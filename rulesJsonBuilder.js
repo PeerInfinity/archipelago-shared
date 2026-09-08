@@ -138,7 +138,6 @@ export function makeRulesJsonScaffold(opts) {
     generation_seed: seed,
     seed_name: seedName,
     player_names: { '1': playerName },
-    world_classes: { '1': worldClassName },
     regions: { '1': {} },
     start_regions: {
       '1': { default: startRegions, available: [] },
