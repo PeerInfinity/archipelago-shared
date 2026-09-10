@@ -78,7 +78,19 @@ export const helperFunctions = {
     if (progressionMapping) {
       // Search through all progressive items to find if itemName is a resolved form
       for (const [progressiveItemName, mapping] of Object.entries(progressionMapping)) {
-        const items = mapping.items || [];
+        // ⛔ `mapping.items` is an ARRAY only for the PROGRESSIVE kind. The
+        // ADDITIVE kind (`{type: 'additive', base_item, items: {name: value}}`,
+        // e.g. messenger's `Shards`) carries an OBJECT here, and it is resolved
+        // by VALUE inside the inventory (`stateManager/core/inventoryManager.js`
+        // `:286`, `:381`), never by levels — so skipping it here is correct by
+        // construction, and it is the spelling that file already guards with
+        // (`:463`, `:515`). Without the guard `items.findIndex` throws
+        // `TypeError: items.findIndex is not a function` on EVERY has/count for
+        // a slot carrying one; `evaluateRule` catches and logs it, so the rules
+        // answer false/0 and the throw ALSO aborts this loop early — a slot
+        // mixing both kinds would lose any progressive resolution ordered after
+        // the additive entry. Trap 1307.
+        const items = Array.isArray(mapping.items) ? mapping.items : [];
         const itemIndex = items.findIndex(item => item.name === itemName);
         if (itemIndex !== -1) {
           // itemName is a resolved form of this progressive item
@@ -149,7 +161,10 @@ export const helperFunctions = {
     if (progressionMapping) {
       // Search through all progressive items to find if itemName is a resolved form
       for (const [progressiveItemName, mapping] of Object.entries(progressionMapping)) {
-        const items = mapping.items || [];
+        // ⛔ Same guard as `has()` above, for the same reason: the ADDITIVE
+        // kind's `items` is an OBJECT, resolved by value in the inventory, and
+        // `findIndex` on it throws. Trap 1307.
+        const items = Array.isArray(mapping.items) ? mapping.items : [];
         const itemIndex = items.findIndex(item => item.name === itemName);
         if (itemIndex !== -1) {
           // itemName is a resolved form of this progressive item
