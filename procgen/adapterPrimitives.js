@@ -1,8 +1,12 @@
 /**
  * Adapter primitives — substrate-neutral catalog of reusable adapter
- * functions. Substrate libraries (e.g. mazeRoomLibrary.js,
- * textAdventureSubstrateLibrary.js) compose registry entries by
- * picking primitives from this file.
+ * functions. A substrate library composes its registry entry by picking
+ * primitives from this file — the maze's does
+ * (`mazeRoom/mazeRoomLibrary.js`). The text adventure used to compose its
+ * entry from these same tile-grid primitives; since the outer repo's
+ * PRESET SIDECARS G2a (2026-09-13) it registers its own room hooks
+ * (`textAdventureSubstrateWrapper/textAdventureRoom.js`) and imports
+ * nothing from here.
  *
  * Why this module exists separately from spatialPrimitives.js:
  * spatial primitives are pure geometry (no world model). The
