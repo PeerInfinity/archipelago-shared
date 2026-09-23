@@ -285,13 +285,15 @@ export class ActionQueue {
      * at the first refused move; a tolerant driver may continue).
      *
      * @param {(entry: import('./actionTypes.js').QueueEntry) => any} [executor]
-     * @returns {{entry: object, state: string, error: string|null, result: any}|null}
-     *   null when the queue is already exhausted.
+     * @returns {{entry: object, state: string, error: string|null, result: any, superseded?: true}|null}
+     *   null when the queue is already exhausted; `superseded` when the
+     *   executor replaced the queue under the cursor (nothing was advanced).
      */
     stepOne(executor) {
         return this.#batch(() => {
             const entry = this.currentEntry();
             if (!entry) return null;
+            const at = this.#cursor;
             this.updateStatus(entry.entryId, { state: ActionState.ACTIVE });
             let result;
             let error = null;
@@ -299,6 +301,25 @@ export class ActionQueue {
                 result = typeof executor === 'function' ? executor(entry) : undefined;
             } catch (err) {
                 error = (err && err.message) ? err.message : String(err);
+            }
+            /**
+             * ⛔ THE EXECUTOR MAY REPLACE THE QUEUE UNDER THE CURSOR. A maze
+             * step onto an exit crosses into another region SYNCHRONOUSLY, and
+             * the new region's load `clear()`s this queue before the executor
+             * returns. Advancing afterwards left `{cursor: 1, length: 0}`, and
+             * the next keypress threw "atIndex 0 is inside the done region"
+             * (measured, seedling-pipeline T2b F2). When the entry that ran is
+             * no longer the one at the cursor it started from, the queue now
+             * belongs to whoever replaced it: no status write, no advance.
+             */
+            if (this.#entries[at] !== entry || this.#cursor !== at) {
+                return {
+                    entry,
+                    state: error === null ? ActionState.COMPLETED : ActionState.FAILED,
+                    error,
+                    result,
+                    superseded: true,
+                };
             }
             if (error === null) {
                 this.updateStatus(entry.entryId, {

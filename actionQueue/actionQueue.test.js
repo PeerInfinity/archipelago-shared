@@ -296,6 +296,40 @@ describe('the LIVE-queue surface (A10)', () => {
         expect(q.cursor).toBe(1);
     });
 
+    /**
+     * ⛓ seedling-pipeline T2b F2 — an executor that CLEARS the queue (a maze
+     * step onto an exit loads the next region synchronously) must leave it
+     * cleared: {cursor 0, length 0}, and the next add at 0 legal. Before, the
+     * advance after the executor left {cursor 1, length 0} and add threw.
+     */
+    it('an executor that CLEARS the queue leaves it cleared — no advance, and the next add is legal', () => {
+        const q = new ActionQueue();
+        q.add(move('N'));
+        const out = q.stepOne(() => { q.clear(); return 'crossed'; });
+        expect(out).toMatchObject({ state: ActionState.COMPLETED, result: 'crossed', superseded: true });
+        expect({ cursor: q.cursor, length: q.length }).toEqual({ cursor: 0, length: 0 });
+        expect(() => q.add(move('S'), q.length)).not.toThrow();
+        expect(q.currentEntry().actionId).toBe('S');
+    });
+
+    it('…an executor that clears AND refills: the refill is untouched (no status write, no advance)', () => {
+        const q = new ActionQueue();
+        q.add(move('N'));
+        q.stepOne(() => { q.clear(); q.add(move('E')); });
+        expect(q.cursor).toBe(0);
+        expect(q.getStatus(q.getEntries()[0].entryId).state).toBe(ActionState.PENDING);
+    });
+
+    it('…and an executor that moved the cursor itself (reset) is not advanced over', () => {
+        const q = new ActionQueue();
+        q.add(move('N'));
+        q.add(move('E'));
+        q.advance();
+        const out = q.stepOne(() => { q.reset(); });
+        expect(out.superseded).toBe(true);
+        expect(q.cursor).toBe(0);
+    });
+
     it('stepOne on an exhausted queue is null and runs nothing', () => {
         const q = new ActionQueue();
         const exec = vi.fn();
