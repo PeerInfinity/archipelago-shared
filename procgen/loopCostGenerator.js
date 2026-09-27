@@ -308,7 +308,7 @@ export function generateLoopCosts({
         topology,
         regionClasses: classifyRegions(topology),
         xpEffect,
-        inputBlock: rulesJson.loop_costs ?? null,
+        inputBlock: rulesJson.loop_costs?.[playerId] ?? null,
     });
 
     return {

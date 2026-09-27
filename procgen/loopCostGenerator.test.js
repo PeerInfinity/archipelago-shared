@@ -492,14 +492,23 @@ describe('loopCostGenerator — WRITE BY CLASS (⚖ i, user 2026-09-06)', () => 
         it('SUMMARY: an EXPLICIT cost in the INPUT block is passed through verbatim', () => {
             registerSummary();
             const rules = withSidecars({ A: { substrate: 'summary_sub' } });
+            // ⛓ The input block is the SLOT's: `loop_costs[playerId]` (per-player map).
             rules.loop_costs = {
-                regions: { A: { moveCost: 7, timeDrainPerSecond: 3 } },
-                locations: { Loc1: 11 },
+                '1': {
+                    regions: { A: { moveCost: 7, timeDrainPerSecond: 3 } },
+                    locations: { Loc1: 11 },
+                },
             };
             const costs = generateLoopCosts({ rulesJson: rules, sphereLog: LOG });
             expect(costs.regions.A.moveCost).toBe(7);
             expect(costs.regions.A.timeDrainPerSecond).toBe(3);
             expect(costs.locations.Loc1).toBe(11);
+            // ⛔ another slot's block is not this slot's input
+            const other = withSidecars({ A: { substrate: 'summary_sub' } });
+            other.loop_costs = { 99: rules.loop_costs['1'] };
+            const plain = generateLoopCosts({ rulesJson: other, sphereLog: LOG });
+            expect(plain.regions.A.moveCost).toBeUndefined();
+            expect(plain.locations.Loc1).toBeUndefined();
         });
 
         it('NATIVE: no region entry and no location entries at all (jta, omsi)', () => {
