@@ -22,6 +22,18 @@ describe('substrateRegistry', () => {
         expect(all.map((e) => e.id).sort()).toEqual(['incremental', 'maze']);
     });
 
+    it('getAll orders entries by id, whatever order they registered in', () => {
+        const ids = ['text_adventure', 'Maze', 'flash_seedling', 'bounce', 'flash', 'maze'];
+        for (const id of ids) substrateRegistry.register({ id });
+        const forward = substrateRegistry.getAll().map((e) => e.id);
+        substrateRegistry.clear();
+        for (const id of [...ids].reverse()) substrateRegistry.register({ id });
+        const reversed = substrateRegistry.getAll().map((e) => e.id);
+        // Code-point order: 'M' < 'b', and a prefix sorts before its extension.
+        expect(forward).toEqual(['Maze', 'bounce', 'flash', 'flash_seedling', 'maze', 'text_adventure']);
+        expect(reversed).toEqual(forward);
+    });
+
     it('register rejects duplicate ids', () => {
         substrateRegistry.register({ id: 'maze' });
         expect(() => substrateRegistry.register({ id: 'maze' }))

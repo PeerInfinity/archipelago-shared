@@ -202,6 +202,12 @@ function validateSharingDeclaration(entry) {
     }
 }
 
+/** Code-point order of `id` — locale-independent, total over distinct ids. */
+function byId(a, b) {
+    if (a.id < b.id) return -1;
+    return a.id > b.id ? 1 : 0;
+}
+
 class SubstrateRegistry {
     constructor() {
         this.entries = new Map();
@@ -229,8 +235,18 @@ class SubstrateRegistry {
         return this.entries.has(id);
     }
 
+    /**
+     * Every registered entry, ORDERED BY `id` (code-point compare, so the
+     * order does not depend on the locale). Insertion order is never
+     * observable: entries register as import side effects, and the page
+     * imports its modules in parallel, so the order they land in varies by
+     * page load — and differs again between the bundled boot, node and
+     * each test file. A reader that needs a particular entry names it
+     * (`get(id)`) or derives it from a fact; a reader that shows a list
+     * gets the same list everywhere.
+     */
     getAll() {
-        return [...this.entries.values()];
+        return [...this.entries.values()].sort(byId);
     }
 
     // Test-only: drop all registrations so a fresh state can be built up.
