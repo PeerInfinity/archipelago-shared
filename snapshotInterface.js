@@ -284,6 +284,68 @@ export function createSnapshotInterface(
     return null;
   }
 
+  /**
+   * The member item names of a group, from the first source that defines it:
+   * game_info relic_groups, then item_groups (array of group names → items' `groups`;
+   * or object form { groupName: [items] }), then the legacy `groups`.
+   * Shared by countGroup (summed) and the unique counts so both read one membership.
+   */
+  function groupMemberNames(groupName) {
+    const playerId = snapshot?.player?.id || snapshot?.player?.slot || DEFAULT_PLAYER_ID;
+
+    // First check game_info for group definitions (e.g., relic_groups in A Hat in Time)
+    const gameInfo = staticData?.game_info?.[playerId] || {};
+    if (Array.isArray(gameInfo.relic_groups?.[groupName])) {
+      return gameInfo.relic_groups[groupName];
+    }
+
+    // Then check if we have item_groups (ALTTP-style with group names as array)
+    const playerItemGroups = staticData?.item_groups?.[playerId] || staticData?.item_groups;
+
+    if (Array.isArray(playerItemGroups)) {
+      // ALTTP uses array of group names; membership lives on each item's `groups`
+      const playerItemsData =
+        (staticData.itemsByPlayer && staticData.itemsByPlayer[playerId]) ||
+        (staticData.items && staticData.items[playerId]);
+      if (!playerItemsData) {
+        log('warn', `[countGroup] playerItemsData not found for player ${playerId}.`);
+        return [];
+      }
+      return Object.keys(playerItemsData).filter(
+        (itemName) => playerItemsData[itemName]?.groups?.includes(groupName)
+      );
+    } else if (
+      typeof playerItemGroups === 'object' &&
+      playerItemGroups[groupName] &&
+      Array.isArray(playerItemGroups[groupName])
+    ) {
+      // If item_groups is an object { groupName: [itemNames...] }
+      return playerItemGroups[groupName];
+    } else if (staticData?.groups) {
+      // Fallback to old groups structure if available
+      const playerGroups = staticData.groups[playerId] || staticData.groups;
+      if (
+        typeof playerGroups === 'object' &&
+        playerGroups[groupName] &&
+        Array.isArray(playerGroups[groupName])
+      ) {
+        return playerGroups[groupName];
+      }
+    }
+    return [];
+  }
+
+  /** The number of DISTINCT members of a group held (count > 0). */
+  function countGroupUnique(groupName) {
+    if (!snapshot?.inventory) return 0;
+    let found = 0;
+    for (const itemName of new Set(groupMemberNames(groupName))) {
+      if ((snapshot.inventory[itemName] || 0) > 0) found++;
+    }
+    return found;
+  }
+
+
   const rawInterfaceForHelpers = {
     _isSnapshotInterface: true,
     snapshot: snapshot,
@@ -614,60 +676,8 @@ export function createSnapshotInterface(
         return 0;
       }
       let count = 0;
-      const playerId = snapshot?.player?.id || snapshot?.player?.slot || DEFAULT_PLAYER_ID;
-
-      // First check game_info for group definitions (e.g., relic_groups in A Hat in Time)
-      const gameInfo = staticData?.game_info?.[playerId] || {};
-      if (gameInfo.relic_groups?.[groupName]) {
-        const itemsInGroup = gameInfo.relic_groups[groupName];
-        if (Array.isArray(itemsInGroup)) {
-          for (const itemName of itemsInGroup) {
-            count += snapshot.inventory[itemName] || 0;
-          }
-          return count;
-        }
-      }
-
-      // Then check if we have item_groups (ALTTP-style with group names as array)
-      const playerItemGroups = staticData?.item_groups?.[playerId] || staticData?.item_groups;
-
-      if (Array.isArray(playerItemGroups)) {
-        // ALTTP uses array of group names
-        // This logic assumes staticData.itemsByPlayer or staticData.items is available and structured per player
-        const playerItemsData =
-          (staticData.itemsByPlayer && staticData.itemsByPlayer[playerId]) ||
-          (staticData.items && staticData.items[playerId]);
-        if (playerItemsData) {
-          for (const itemName in playerItemsData) {
-            if (playerItemsData[itemName]?.groups?.includes(groupName)) {
-              const itemCount = snapshot.inventory[itemName] || 0;
-              count += itemCount;
-            }
-          }
-        } else {
-          log('warn', `[countGroup] playerItemsData not found for player ${playerId}.`);
-        }
-      } else if (
-        typeof playerItemGroups === 'object' &&
-        playerItemGroups[groupName] &&
-        Array.isArray(playerItemGroups[groupName])
-      ) {
-        // If item_groups is an object { groupName: [itemNames...] }
-        for (const itemInGroup of playerItemGroups[groupName]) {
-          count += snapshot.inventory[itemInGroup] || 0;
-        }
-      } else if (staticData?.groups) {
-        // Fallback to old groups structure if available
-        const playerGroups = staticData.groups[playerId] || staticData.groups;
-        if (
-          typeof playerGroups === 'object' &&
-          playerGroups[groupName] &&
-          Array.isArray(playerGroups[groupName])
-        ) {
-          for (const itemInGroup of playerGroups[groupName]) {
-            count += snapshot.inventory[itemInGroup] || 0;
-          }
-        }
+      for (const itemName of groupMemberNames(groupName)) {
+        count += snapshot.inventory[itemName] || 0;
       }
       return count;
     },
@@ -1100,125 +1110,21 @@ export function createSnapshotInterface(
         return totalCount;
       }
 
-      // Handle has_group_unique - counts unique items from a group (ignores duplicates)
+      // Handle has_group_unique - counts DISTINCT members held (duplicates of one member count once).
+      // Python: rule_builder HasGroupUnique / state.has_group_unique.
       if (methodName === 'has_group_unique' && args.length >= 2) {
         const groupName = args[0];
         const requiredCount = args[1];
         if (typeof groupName !== 'string') return false;
         if (typeof requiredCount !== 'number' || requiredCount < 0) return false;
-
-        const playerId = snapshot?.player?.id || snapshot?.player?.slot || DEFAULT_PLAYER_ID;
-        const playerItemGroups = staticData?.item_groups?.[playerId] || staticData?.item_groups;
-
-        let uniqueItemsFound = 0;
-
-        if (Array.isArray(playerItemGroups)) {
-          // ALTTP-style with group names as array
-          const playerItemsData = staticData.itemsByPlayer && staticData.itemsByPlayer[playerId];
-          if (playerItemsData) {
-            for (const itemName in playerItemsData) {
-              if (playerItemsData[itemName]?.groups?.includes(groupName)) {
-                const itemCount = snapshot.inventory[itemName] || 0;
-                if (itemCount > 0) {
-                  uniqueItemsFound++;
-                  if (uniqueItemsFound >= requiredCount) {
-                    return true;
-                  }
-                }
-              }
-            }
-          }
-        } else if (
-          typeof playerItemGroups === 'object' &&
-          playerItemGroups[groupName] &&
-          Array.isArray(playerItemGroups[groupName])
-        ) {
-          // Item_groups is an object { groupName: [itemNames...] }
-          for (const itemInGroup of playerItemGroups[groupName]) {
-            const itemCount = snapshot.inventory[itemInGroup] || 0;
-            if (itemCount > 0) {
-              uniqueItemsFound++;
-              if (uniqueItemsFound >= requiredCount) {
-                return true;
-              }
-            }
-          }
-        } else if (staticData?.groups) {
-          // Fallback to old groups structure if available
-          const playerGroups = staticData.groups[playerId] || staticData.groups;
-          if (
-            typeof playerGroups === 'object' &&
-            playerGroups[groupName] &&
-            Array.isArray(playerGroups[groupName])
-          ) {
-            for (const itemInGroup of playerGroups[groupName]) {
-              const itemCount = snapshot.inventory[itemInGroup] || 0;
-              if (itemCount > 0) {
-                uniqueItemsFound++;
-                if (uniqueItemsFound >= requiredCount) {
-                  return true;
-                }
-              }
-            }
-          }
-        }
-
-        return uniqueItemsFound >= requiredCount;
+        return countGroupUnique(groupName) >= requiredCount;
       }
 
       // Handle count_group_unique - returns count of unique items from a group (ignores duplicates)
       if (methodName === 'count_group_unique' && args.length >= 1) {
         const groupName = args[0];
         if (typeof groupName !== 'string') return 0;
-
-        const playerId = snapshot?.player?.id || snapshot?.player?.slot || DEFAULT_PLAYER_ID;
-        const playerItemGroups = staticData?.item_groups?.[playerId] || staticData?.item_groups;
-
-        let uniqueItemsFound = 0;
-
-        if (Array.isArray(playerItemGroups)) {
-          // ALTTP-style with group names as array
-          const playerItemsData = staticData.itemsByPlayer && staticData.itemsByPlayer[playerId];
-          if (playerItemsData) {
-            for (const itemName in playerItemsData) {
-              if (playerItemsData[itemName]?.groups?.includes(groupName)) {
-                const itemCount = snapshot.inventory[itemName] || 0;
-                if (itemCount > 0) {
-                  uniqueItemsFound++;
-                }
-              }
-            }
-          }
-        } else if (
-          typeof playerItemGroups === 'object' &&
-          playerItemGroups[groupName] &&
-          Array.isArray(playerItemGroups[groupName])
-        ) {
-          // Item_groups is an object { groupName: [itemNames...] }
-          for (const itemInGroup of playerItemGroups[groupName]) {
-            const itemCount = snapshot.inventory[itemInGroup] || 0;
-            if (itemCount > 0) {
-              uniqueItemsFound++;
-            }
-          }
-        } else if (staticData?.groups) {
-          // Fallback to old groups structure if available
-          const playerGroups = staticData.groups[playerId] || staticData.groups;
-          if (
-            typeof playerGroups === 'object' &&
-            playerGroups[groupName] &&
-            Array.isArray(playerGroups[groupName])
-          ) {
-            for (const itemInGroup of playerGroups[groupName]) {
-              const itemCount = snapshot.inventory[itemInGroup] || 0;
-              if (itemCount > 0) {
-                uniqueItemsFound++;
-              }
-            }
-          }
-        }
-
-        return uniqueItemsFound;
+        return countGroupUnique(groupName);
       }
 
       // Check for game-specific state methods first

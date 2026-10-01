@@ -349,9 +349,21 @@ export function createRuleBuilderEvaluator(evaluateRule) {
       case 'HasGroupUnique': {
         // Support both "group" (from Resolved._get_args_dict) and "item_name_group" (from Rule.to_dict)
         const groupName = args.group || args.item_name_group;
-        const count = args.count ?? 1;
-        // For unique, we use the same group_check - the semantics are handled by the group logic
-        return evaluateRule({ type: 'group_check', group: groupName, count }, context, depth + 1, localScope);
+        // NOT group_check: that SUMS member counts (HasGroup), so one member held N times
+        // would pass. Python (rule_builder/rules.py HasGroupUnique) counts DISTINCT members
+        // held; a group smaller than `count` can never pass (Python resolves it to False_,
+        // which the distinct count reproduces), and count <= 0 resolves to True_.
+        const countValue = args.count ?? 1;
+        const count = typeof countValue === 'object' && countValue !== null
+          ? evaluateRule(countValue, context, depth + 1, localScope)
+          : countValue;
+        if (count === undefined) return undefined;
+        if (count <= 0) return true;
+        return evaluateRule({
+          type: 'state_method',
+          method: 'has_group_unique',
+          args: [{ type: 'constant', value: groupName }, { type: 'constant', value: count }],
+        }, context, depth + 1, localScope);
       }
 
       // Composite rules: And
