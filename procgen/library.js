@@ -24,6 +24,8 @@
  * number of doors of that color.
  */
 
+import { evaluateRule } from '../ruleEngine.js';
+
 export const DEFAULT_ITEMS = Object.freeze({
     // Victory item — when present in a scenario's item pool, the
     // grid-growth driver wires up an item-check completion condition
@@ -159,97 +161,75 @@ export const DEFAULT_OBSTACLES = Object.freeze({
 });
 
 /**
- * Evaluate a Rule Builder rule against an inventory — either a
- * Set<item_id> (count-blind: every held item counts as 1) or a
- * Map<item_id, count> (count-aware: Has with `args.count` compares
- * against the held count; the sphere-growth count gates need this —
- * the forward simulator carries a Map).
- *
- * Supports the subset of rules the v1 maze pipeline produces and a
- * few common AP-side constructs: Has, HasAll, HasAny,
- * HasFromListUnique, And, Or, True_, False_. Anything outside this
- * set is treated as unsatisfied
- * (returns false) — per top-down-driver.md §8's degradation
- * strategy: rather than throwing on a foreign rules.json, fall back
- * to "blocked" so the substrate's path-extraction / placement BFS
- * keeps working. The full Rule-Builder schema is handled by the
- * runtime evaluator (`shared/ruleEngine.js`) when stateManager has
- * a snapshot context — see mazeRoomUI._currentRuleEvaluator.
+ * The shared rule engine's evaluation context, reduced to an inventory —
+ * either a Set<item> (count-blind: every held item counts as 1) or a
+ * Map<item, count> (count-aware; the forward simulator carries one so
+ * count gates evaluate). It answers item questions only: anything that
+ * needs more (a game helper, region reachability, a setting) evaluates
+ * to `undefined` in the engine.
  */
-function inventoryCount(inventory, itemName) {
-    if (inventory instanceof Map) return inventory.get(itemName) ?? 0;
-    return inventory.has(itemName) ? 1 : 0;
+export function inventoryRuleContext(inventory, playerId = '1') {
+    const count = inventory instanceof Map
+        ? (name) => inventory.get(name) ?? 0
+        : (name) => (inventory.has(name) ? 1 : 0);
+    return {
+        _isSnapshotInterface: true,
+        getPlayerId: () => String(playerId),
+        hasItem: (name) => count(name) > 0,
+        countItem: count,
+    };
 }
 
-export function evaluateRuleAgainstInventory(rule, inventory) {
-    if (!rule || typeof rule !== 'object') return false;
-    switch (rule.rule) {
-        case 'True_': return true;
-        case 'False_': return false;
-        case 'Has': {
-            const itemName = rule.args?.item_name;
-            if (itemName == null) return false;
-            return inventoryCount(inventory, itemName) >= (rule.args?.count ?? 1);
+/**
+ * Evaluate a rule against an inventory with THE shared rule engine
+ * (`shared/ruleEngine`, the evaluator play uses) — three-valued: true,
+ * false, or `undefined` when the rule needs something an inventory
+ * cannot answer (a game helper, CanReachRegion, a setting…).
+ */
+export function evaluateRuleWithInventory(rule, inventory, playerId = '1') {
+    if (!rule || typeof rule !== 'object') return undefined;
+    return evaluateRule(rule, inventoryRuleContext(inventory, playerId));
+}
+
+/**
+ * Evaluate a Rule Builder rule against an inventory (Set or Map, see
+ * inventoryRuleContext). A rule the engine cannot decide from an
+ * inventory alone is treated as unsatisfied (false) — per
+ * top-down-driver.md §8's degradation strategy: rather than throwing on
+ * a foreign rules.json, fall back to "blocked" so the substrate's
+ * path-extraction / placement BFS keeps working. A caller that must NOT
+ * degrade (the sphere log) uses evaluateRuleWithInventory and refuses on
+ * `undefined` instead.
+ *
+ * One evaluator, not two: this delegates to the shared engine, so its
+ * vocabulary is the engine's (Has, HasAll, HasAny, HasAllCounts,
+ * HasFromList, HasFromListUnique, And, Or, AtLeast, …) and cannot drift.
+ */
+export function evaluateRuleAgainstInventory(rule, inventory, playerId = '1') {
+    return evaluateRuleWithInventory(rule, inventory, playerId) === true;
+}
+
+/**
+ * Name what makes `rule` undecidable over `inventory`: descend from the
+ * root through children that themselves evaluate to `undefined`, and name
+ * each undecided node none of whose children is undecided — its `rule`,
+ * or `type:<t>` for an AST node. Sorted, distinct; empty when the rule
+ * evaluates to true/false.
+ */
+export function undeterminedRuleKinds(rule, inventory, playerId = '1', out = new Set()) {
+    if (evaluateRuleWithInventory(rule, inventory, playerId) !== undefined) return [...out].sort();
+    let deeper = false;
+    for (const child of Array.isArray(rule?.children) ? rule.children : []) {
+        if (evaluateRuleWithInventory(child, inventory, playerId) === undefined) {
+            deeper = true;
+            undeterminedRuleKinds(child, inventory, playerId, out);
         }
-        case 'HasAll': {
-            const items = rule.args?.items ?? rule.args?.item_names ?? [];
-            for (const item of items) {
-                if (!inventory.has(item)) return false;
-            }
-            return true;
-        }
-        case 'HasAny': {
-            const items = rule.args?.items ?? rule.args?.item_names ?? [];
-            for (const item of items) {
-                if (inventory.has(item)) return true;
-            }
-            return false;
-        }
-        case 'HasFromListUnique': {
-            // At least `count` DISTINCT names from the list, ignoring
-            // duplicates of the same item. The jta substrate's loose
-            // count-based zone gates are built from this rule.
-            const items = rule.args?.item_names ?? rule.args?.items ?? [];
-            const required = rule.args?.count ?? 1;
-            if (required <= 0) return true;
-            let distinct = 0;
-            for (const item of items) {
-                if (inventoryCount(inventory, item) > 0 && ++distinct >= required) return true;
-            }
-            return false;
-        }
-        case 'And': {
-            for (const child of rule.children ?? []) {
-                if (!evaluateRuleAgainstInventory(child, inventory)) return false;
-            }
-            return true;
-        }
-        case 'Or': {
-            for (const child of rule.children ?? []) {
-                if (evaluateRuleAgainstInventory(child, inventory)) return true;
-            }
-            return false;
-        }
-        case 'AtLeast': {
-            // True when at least `count` children are satisfied.
-            const required = rule.count ?? rule.args?.count ?? 0;
-            if (required <= 0) return true;
-            let satisfied = 0;
-            for (const child of rule.children ?? []) {
-                if (evaluateRuleAgainstInventory(child, inventory)) {
-                    if (++satisfied >= required) return true;
-                }
-            }
-            return false;
-        }
-        default:
-            // Unsupported construct (CountItem, helpers, count_check, …).
-            // Treat as unsatisfied so substrate placement / path
-            // extraction keeps working without snapshot context. The
-            // shared rule engine is the right answer at runtime when
-            // the player is actually playing the loaded rules.json.
-            return false;
     }
+    if (!deeper) {
+        out.add(typeof rule?.rule === 'string' ? rule.rule
+            : (typeof rule?.type === 'string' ? `type:${rule.type}` : '<not a rule>'));
+    }
+    return [...out].sort();
 }
 
 /**

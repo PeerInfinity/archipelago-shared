@@ -6,6 +6,8 @@ import {
     isObstacleCleared,
     evaluateRuleAgainstInventory,
     getItemRenderHints,
+    evaluateRuleWithInventory,
+    undeterminedRuleKinds,
 } from './library.js';
 
 describe('library entry feature tagging', () => {
@@ -213,6 +215,56 @@ describe('isObstacleCleared / evaluateRuleAgainstInventory smoke (covered indire
         // count <= 0 is vacuously true (matches rule_builder's _instantiate).
         const zero = { rule: 'HasFromListUnique', args: { item_names: ['a'], count: 0 } };
         expect(evaluateRuleAgainstInventory(zero, new Set())).toBe(true);
+    });
+
+    it('evaluates HasAllCounts: every item at its count (rule_builder item_counts)', () => {
+        // The apcalc shape: {name: count}, counts > 1 on several names.
+        const rule = { rule: 'HasAllCounts', args: { item_counts: { a: 2, b: 1 } } };
+        expect(evaluateRuleAgainstInventory(rule, new Map([['a', 2], ['b', 1]]))).toBe(true);
+        expect(evaluateRuleAgainstInventory(rule, new Map([['a', 3], ['b', 4]]))).toBe(true);
+        expect(evaluateRuleAgainstInventory(rule, new Map([['a', 1], ['b', 1]]))).toBe(false);
+        expect(evaluateRuleAgainstInventory(rule, new Map([['a', 2]]))).toBe(false);
+        // A Set counts each held item once, as Has does: a count of 2 fails.
+        expect(evaluateRuleAgainstInventory(rule, new Set(['a', 'b']))).toBe(false);
+        const ones = { rule: 'HasAllCounts', args: { item_counts: { a: 1, b: 1 } } };
+        expect(evaluateRuleAgainstInventory(ones, new Set(['a', 'b']))).toBe(true);
+        // Empty → true (state.has_all_counts); the runtime's `items` alias reads too.
+        expect(evaluateRuleAgainstInventory({ rule: 'HasAllCounts', args: { item_counts: {} } }, new Set())).toBe(true);
+        expect(evaluateRuleAgainstInventory({ rule: 'HasAllCounts', args: { items: { a: 2 } } },
+            new Map([['a', 2]]))).toBe(true);
+        // A non-number count (a field resolver) is not evaluable here → false.
+        expect(evaluateRuleAgainstInventory({ rule: 'HasAllCounts', args: { item_counts: { a: { resolver: 'x' } } } },
+            new Map([['a', 9]]))).toBe(false);
+    });
+
+    it('evaluates HasFromList by the SUMMED count of the listed names', () => {
+        const rule = { rule: 'HasFromList', args: { item_names: ['a', 'b'], count: 3 } };
+        expect(evaluateRuleAgainstInventory(rule, new Map([['a', 3]]))).toBe(true);
+        expect(evaluateRuleAgainstInventory(rule, new Map([['a', 2], ['b', 1]]))).toBe(true);
+        expect(evaluateRuleAgainstInventory(rule, new Map([['a', 2], ['z', 9]]))).toBe(false);
+        expect(evaluateRuleAgainstInventory(rule, new Set(['a', 'b']))).toBe(false);
+    });
+
+    it('is three-valued underneath: a rule an inventory cannot decide is undefined, not false', () => {
+        const helper = { rule: 'can_use_bombs' };
+        expect(evaluateRuleWithInventory(helper, new Set())).toBe(undefined);
+        // ...and the boolean API degrades it to "blocked".
+        expect(evaluateRuleAgainstInventory(helper, new Set())).toBe(false);
+        // An Or that a decidable branch settles is decided.
+        const settled = { rule: 'Or', children: [{ rule: 'True_' }, helper] };
+        expect(evaluateRuleWithInventory(settled, new Set())).toBe(true);
+    });
+
+    it('undeterminedRuleKinds names the undecided leaves, walking children', () => {
+        const rule = { rule: 'And', children: [
+            { rule: 'Has', args: { item_name: 'a' } },
+            { rule: 'Or', children: [{ rule: 'can_use_bombs' }, { rule: 'CanReachRegion', args: { region_name: 'X' } }] },
+            { rule: 'can_use_bombs' },
+        ] };
+        expect(undeterminedRuleKinds(rule, new Set(['a']))).toEqual(['CanReachRegion', 'can_use_bombs']);
+        // Decided rules name nothing — including one decided DESPITE a helper.
+        expect(undeterminedRuleKinds({ rule: 'HasAllCounts', args: { item_counts: { a: 2 } } }, new Set())).toEqual([]);
+        expect(undeterminedRuleKinds(rule, new Set())).toEqual([]); // Has a → false decides the And
     });
 
     it('treats unsupported rule constructs as unsatisfied (graceful degradation)', () => {

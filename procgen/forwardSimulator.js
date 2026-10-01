@@ -43,7 +43,36 @@
  * See docs/json/developer/procgen/playback-and-debugging.md.
  */
 
-import { evaluateRuleAgainstInventory } from './library.js';
+import { evaluateRuleWithInventory, undeterminedRuleKinds } from './library.js';
+
+/**
+ * generateSphereLog's refusal: some rule it had to evaluate is not
+ * decidable from an inventory (a game helper, CanReachRegion, a setting —
+ * see evaluateRuleWithInventory). A log computed by treating those as
+ * false would be silently too strict, so none is produced. `kinds` names
+ * the undecided rule kinds; `endpoints` the exits/locations carrying them.
+ */
+export class SphereLogNotEvaluableError extends Error {
+    constructor(kinds, endpoints) {
+        super(`generateSphereLog: not evaluable from an inventory: ${kinds.join(', ')} `
+            + `(${endpoints.length} rule(s), e.g. ${endpoints.slice(0, 3).join('; ')})`);
+        this.name = 'SphereLogNotEvaluableError';
+        this.kinds = kinds;
+        this.endpoints = endpoints;
+    }
+}
+
+// Decide one rule. `undecided` (optional, Map<endpoint, {rule, inventory}>)
+// records the first time each endpoint's rule evaluated to `undefined`;
+// the rule then counts as unsatisfied, the walkers' long-standing reading.
+function decide(model, rule, inventory, undecided, endpoint) {
+    const verdict = evaluateRuleWithInventory(rule, inventory, model.playerId);
+    if (verdict === undefined && undecided && !undecided.has(endpoint)) {
+        undecided.set(endpoint, { rule, inventory: new Map(
+            inventory instanceof Map ? inventory : [...inventory].map((n) => [n, 1])) });
+    }
+    return verdict === true;
+}
 
 const DEFAULT_PLAYER_ID = '1';
 
@@ -120,7 +149,7 @@ function collectStartRegions(rulesDoc, playerId) {
  * Compute the set of regions currently reachable given an inventory.
  * Iteratively walks exits until no new region is added.
  */
-export function computeReachableRegions(model, inventory) {
+export function computeReachableRegions(model, inventory, undecided = null) {
     const reachable = new Set(model.startRegions);
     let changed = true;
     while (changed) {
@@ -131,7 +160,7 @@ export function computeReachableRegions(model, inventory) {
             for (const exit of region.exits) {
                 if (reachable.has(exit.connected_region)) continue;
                 if (!model.regions.has(exit.connected_region)) continue;
-                if (evaluateRuleAgainstInventory(exit.access_rule, inventory)) {
+                if (decide(model, exit.access_rule, inventory, undecided, `exit ${regionName} -> ${exit.name}`)) {
                     reachable.add(exit.connected_region);
                     changed = true;
                 }
@@ -145,14 +174,14 @@ export function computeReachableRegions(model, inventory) {
  * Compute the set of location names currently accessible — i.e.,
  * located in a reachable region AND with their access_rule satisfied.
  */
-export function computeAccessibleLocations(model, inventory, reachableRegions = null) {
-    const reach = reachableRegions ?? computeReachableRegions(model, inventory);
+export function computeAccessibleLocations(model, inventory, reachableRegions = null, undecided = null) {
+    const reach = reachableRegions ?? computeReachableRegions(model, inventory, undecided);
     const locs = new Set();
     for (const regionName of reach) {
         const region = model.regions.get(regionName);
         if (!region) continue;
         for (const location of region.locations) {
-            if (evaluateRuleAgainstInventory(location.access_rule, inventory)) {
+            if (decide(model, location.access_rule, inventory, undecided, `location ${location.name}`)) {
                 locs.add(location.name);
             }
         }
@@ -181,7 +210,7 @@ export function pickNextTarget(model, state) {
         if (!region) continue;
         for (const location of region.locations) {
             if (checked.has(location.name)) continue;
-            if (!evaluateRuleAgainstInventory(location.access_rule, inventory)) continue;
+            if (!decide(model, location.access_rule, inventory, null, null)) continue;
             const candidate = {
                 region: regionName,
                 location: location.name,
@@ -199,7 +228,7 @@ export function pickNextTarget(model, state) {
 }
 
 // Normalize an inventory / checked-location argument into something
-// `evaluateRuleAgainstInventory` and `.has()` both understand.
+// the inventory rule context (library.js) and `.has()` both understand.
 //
 // A Map<name, count> passes through UNCHANGED. generateSphereLog below
 // carries exactly that shape (counts must accumulate so `Has` with
@@ -229,6 +258,11 @@ function isAdvancement(item) {
  *
  * `opts.metadata` is merged into the leading metadata entry. Common
  * fields: { seed, seed_name, event_locations, event_items }.
+ *
+ * ⛔ Throws SphereLogNotEvaluableError when any rule the walk evaluated
+ * is undecidable from an inventory (a game helper, CanReachRegion, …):
+ * the log would otherwise be silently too strict. Rules the walk never
+ * reaches do not count.
  */
 export function generateSphereLog(rulesDoc, opts = {}) {
     const playerId = opts.playerId ?? DEFAULT_PLAYER_ID;
@@ -260,9 +294,13 @@ export function generateSphereLog(rulesDoc, opts = {}) {
         startingItemCounts[name] = (startingItemCounts[name] ?? 0) + 1;
     }
     const checkedLocations = new Set();
+    // Every rule the walk evaluated that an inventory cannot decide. Any at
+    // all ⇒ the log below would be a guess (each counted as unsatisfied),
+    // so the walk REFUSES rather than return it — see the end of this function.
+    const undecided = new Map();
 
-    const initialRegions = computeReachableRegions(model, inventory);
-    const initialLocs = computeAccessibleLocations(model, inventory, initialRegions);
+    const initialRegions = computeReachableRegions(model, inventory, undecided);
+    const initialLocs = computeAccessibleLocations(model, inventory, initialRegions, undecided);
 
     entries.push({
         type: 'state_update',
@@ -293,8 +331,8 @@ export function generateSphereLog(rulesDoc, opts = {}) {
         // accessible NOW with advancement items are this sphere's
         // pick set. Locations that become accessible mid-sphere
         // (from a pickup's item) belong to the NEXT sphere.
-        const boundaryRegions = computeReachableRegions(model, inventory);
-        const boundaryLocs = computeAccessibleLocations(model, inventory, boundaryRegions);
+        const boundaryRegions = computeReachableRegions(model, inventory, undecided);
+        const boundaryLocs = computeAccessibleLocations(model, inventory, boundaryRegions, undecided);
 
         const spherePicks = [];
         for (const locationName of boundaryLocs) {
@@ -312,15 +350,15 @@ export function generateSphereLog(rulesDoc, opts = {}) {
         for (const location of spherePicks) {
             fractionalIdx += 1;
 
-            const beforeRegions = computeReachableRegions(model, inventory);
-            const beforeLocs = computeAccessibleLocations(model, inventory, beforeRegions);
+            const beforeRegions = computeReachableRegions(model, inventory, undecided);
+            const beforeLocs = computeAccessibleLocations(model, inventory, beforeRegions, undecided);
 
             checkedLocations.add(location.name);
             const itemName = location.item?.name;
             if (itemName) inventory.set(itemName, (inventory.get(itemName) ?? 0) + 1);
 
-            const afterRegions = computeReachableRegions(model, inventory);
-            const afterLocs = computeAccessibleLocations(model, inventory, afterRegions);
+            const afterRegions = computeReachableRegions(model, inventory, undecided);
+            const afterLocs = computeAccessibleLocations(model, inventory, afterRegions, undecided);
 
             const newRegions = sortedArray(diff(afterRegions, beforeRegions));
             const newLocs = sortedArray(filterSet(diff(afterLocs, beforeLocs), (n) => !checkedLocations.has(n)));
@@ -346,6 +384,13 @@ export function generateSphereLog(rulesDoc, opts = {}) {
         sphereIdx += 1;
     }
 
+    if (undecided.size > 0) {
+        const kinds = new Set();
+        for (const { rule, inventory: held } of undecided.values()) {
+            for (const kind of undeterminedRuleKinds(rule, held, playerId)) kinds.add(kind);
+        }
+        throw new SphereLogNotEvaluableError([...kinds].sort(), [...undecided.keys()].sort());
+    }
     return entries;
 }
 
