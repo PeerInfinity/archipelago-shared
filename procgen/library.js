@@ -165,30 +165,39 @@ export const DEFAULT_OBSTACLES = Object.freeze({
  * either a Set<item> (count-blind: every held item counts as 1) or a
  * Map<item, count> (count-aware; the forward simulator carries one so
  * count gates evaluate). It answers item questions only: anything that
- * needs more (a game helper, region reachability, a setting) evaluates
- * to `undefined` in the engine.
+ * needs more (a game helper, a setting) evaluates to `undefined` in the
+ * engine.
+ *
+ * `isRegionReachable` (optional, `(regionName) => true|false|undefined`)
+ * answers CanReachRegion / can_reach — the engine's own context hook, the
+ * one the stateManager supplies. The forward simulator passes "is it in the
+ * set reached so far", AP's semantics (CollectionState.can_reach_region over
+ * the regions swept so far); without it, region reachability is `undefined`.
  */
-export function inventoryRuleContext(inventory, playerId = '1') {
+export function inventoryRuleContext(inventory, playerId = '1', isRegionReachable = null) {
     const count = inventory instanceof Map
         ? (name) => inventory.get(name) ?? 0
         : (name) => (inventory.has(name) ? 1 : 0);
-    return {
+    const context = {
         _isSnapshotInterface: true,
         getPlayerId: () => String(playerId),
         hasItem: (name) => count(name) > 0,
         countItem: count,
     };
+    if (typeof isRegionReachable === 'function') context.isRegionReachable = isRegionReachable;
+    return context;
 }
 
 /**
  * Evaluate a rule against an inventory with THE shared rule engine
  * (`shared/ruleEngine`, the evaluator play uses) — three-valued: true,
  * false, or `undefined` when the rule needs something an inventory
- * cannot answer (a game helper, CanReachRegion, a setting…).
+ * cannot answer (a game helper, a setting…; CanReachRegion too, unless
+ * `isRegionReachable` is given — see inventoryRuleContext).
  */
-export function evaluateRuleWithInventory(rule, inventory, playerId = '1') {
+export function evaluateRuleWithInventory(rule, inventory, playerId = '1', isRegionReachable = null) {
     if (!rule || typeof rule !== 'object') return undefined;
-    return evaluateRule(rule, inventoryRuleContext(inventory, playerId));
+    return evaluateRule(rule, inventoryRuleContext(inventory, playerId, isRegionReachable));
 }
 
 /**
@@ -214,15 +223,15 @@ export function evaluateRuleAgainstInventory(rule, inventory, playerId = '1') {
  * root through children that themselves evaluate to `undefined`, and name
  * each undecided node none of whose children is undecided — its `rule`,
  * or `type:<t>` for an AST node. Sorted, distinct; empty when the rule
- * evaluates to true/false.
+ * evaluates to true/false. `isRegionReachable` as for evaluateRuleWithInventory.
  */
-export function undeterminedRuleKinds(rule, inventory, playerId = '1', out = new Set()) {
-    if (evaluateRuleWithInventory(rule, inventory, playerId) !== undefined) return [...out].sort();
+export function undeterminedRuleKinds(rule, inventory, playerId = '1', out = new Set(), isRegionReachable = null) {
+    if (evaluateRuleWithInventory(rule, inventory, playerId, isRegionReachable) !== undefined) return [...out].sort();
     let deeper = false;
     for (const child of Array.isArray(rule?.children) ? rule.children : []) {
-        if (evaluateRuleWithInventory(child, inventory, playerId) === undefined) {
+        if (evaluateRuleWithInventory(child, inventory, playerId, isRegionReachable) === undefined) {
             deeper = true;
-            undeterminedRuleKinds(child, inventory, playerId, out);
+            undeterminedRuleKinds(child, inventory, playerId, out, isRegionReachable);
         }
     }
     if (!deeper) {

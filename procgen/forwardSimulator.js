@@ -47,10 +47,13 @@ import { evaluateRuleWithInventory, undeterminedRuleKinds } from './library.js';
 
 /**
  * generateSphereLog's refusal: some rule it had to evaluate is not
- * decidable from an inventory (a game helper, CanReachRegion, a setting —
- * see evaluateRuleWithInventory). A log computed by treating those as
- * false would be silently too strict, so none is produced. `kinds` names
- * the undecided rule kinds; `endpoints` the exits/locations carrying them.
+ * decidable from an inventory plus the regions reached so far (a game
+ * helper, CanReachLocation, CanReachEntrance, a setting — see
+ * evaluateRuleWithInventory). A log computed by treating those as false
+ * would be silently too strict, so none is produced. `kinds` names the
+ * undecided rule kinds; `endpoints` the exits/locations carrying them.
+ * CanReachRegion is NOT refused: it is decided from the reached set, AP's
+ * semantics (⚖ 2026-10-04) — see regionReachability.
  */
 export class SphereLogNotEvaluableError extends Error {
     constructor(kinds, endpoints) {
@@ -62,14 +65,29 @@ export class SphereLogNotEvaluableError extends Error {
     }
 }
 
-// Decide one rule. `undecided` (optional, Map<endpoint, {rule, inventory}>)
-// records the first time each endpoint's rule evaluated to `undefined`;
-// the rule then counts as unsatisfied, the walkers' long-standing reading.
-function decide(model, rule, inventory, undecided, endpoint) {
-    const verdict = evaluateRuleWithInventory(rule, inventory, model.playerId);
+// CanReachRegion(X), decided the way AP's CollectionState.can_reach_region
+// decides it: X is in the set of regions reached SO FAR. `reached` is the
+// live set the region sweep is growing, so a rule that read `false` is
+// re-read on the sweep's next pass and turns true once X is added — the
+// sweep's fixed point is AP's. (The stateManager answers the same hook from
+// its in-progress `knownReachableRegions`.) A region the rules do not
+// define is `undefined` — refused by name, never guessed.
+function regionReachability(model, reached) {
+    return (regionName) => (model.regions.has(regionName) ? reached.has(regionName) : undefined);
+}
+
+// Decide one rule. `reached` is the region set CanReachRegion reads (see
+// regionReachability). `undecided` (optional, Map<endpoint, {rule,
+// inventory, reached}>) records the first time each endpoint's rule
+// evaluated to `undefined`; the rule then counts as unsatisfied, the
+// walkers' long-standing reading.
+function decide(model, rule, inventory, reached, undecided, endpoint) {
+    const verdict = evaluateRuleWithInventory(rule, inventory, model.playerId,
+        regionReachability(model, reached));
     if (verdict === undefined && undecided && !undecided.has(endpoint)) {
         undecided.set(endpoint, { rule, inventory: new Map(
-            inventory instanceof Map ? inventory : [...inventory].map((n) => [n, 1])) });
+            inventory instanceof Map ? inventory : [...inventory].map((n) => [n, 1])),
+        reached: new Set(reached) });
     }
     return verdict === true;
 }
@@ -147,7 +165,9 @@ function collectStartRegions(rulesDoc, playerId) {
 
 /**
  * Compute the set of regions currently reachable given an inventory.
- * Iteratively walks exits until no new region is added.
+ * Iteratively walks exits until no new region is added. An exit rule's
+ * CanReachRegion reads the set as it grows, so the result is the fixed
+ * point AP's update_reachable_regions reaches.
  */
 export function computeReachableRegions(model, inventory, undecided = null) {
     const reachable = new Set(model.startRegions);
@@ -160,7 +180,7 @@ export function computeReachableRegions(model, inventory, undecided = null) {
             for (const exit of region.exits) {
                 if (reachable.has(exit.connected_region)) continue;
                 if (!model.regions.has(exit.connected_region)) continue;
-                if (decide(model, exit.access_rule, inventory, undecided, `exit ${regionName} -> ${exit.name}`)) {
+                if (decide(model, exit.access_rule, inventory, reachable, undecided, `exit ${regionName} -> ${exit.name}`)) {
                     reachable.add(exit.connected_region);
                     changed = true;
                 }
@@ -181,7 +201,7 @@ export function computeAccessibleLocations(model, inventory, reachableRegions = 
         const region = model.regions.get(regionName);
         if (!region) continue;
         for (const location of region.locations) {
-            if (decide(model, location.access_rule, inventory, undecided, `location ${location.name}`)) {
+            if (decide(model, location.access_rule, inventory, reach, undecided, `location ${location.name}`)) {
                 locs.add(location.name);
             }
         }
@@ -210,7 +230,7 @@ export function pickNextTarget(model, state) {
         if (!region) continue;
         for (const location of region.locations) {
             if (checked.has(location.name)) continue;
-            if (!decide(model, location.access_rule, inventory, null, null)) continue;
+            if (!decide(model, location.access_rule, inventory, reachable, null, null)) continue;
             const candidate = {
                 region: regionName,
                 location: location.name,
@@ -260,9 +280,12 @@ function isAdvancement(item) {
  * fields: { seed, seed_name, event_locations, event_items }.
  *
  * ⛔ Throws SphereLogNotEvaluableError when any rule the walk evaluated
- * is undecidable from an inventory (a game helper, CanReachRegion, …):
- * the log would otherwise be silently too strict. Rules the walk never
- * reaches do not count.
+ * is undecidable from an inventory plus the regions reached so far (a game
+ * helper, CanReachLocation, …): the log would otherwise be silently too
+ * strict. Rules the walk never reaches do not count. CanReachRegion is
+ * decided, not refused: within each sphere the region sweep runs to its
+ * fixed point (CanReachRegion(X) true iff X is reached so far) before the
+ * sphere's locations are collected — AP's semantics.
  */
 export function generateSphereLog(rulesDoc, opts = {}) {
     const playerId = opts.playerId ?? DEFAULT_PLAYER_ID;
@@ -386,8 +409,9 @@ export function generateSphereLog(rulesDoc, opts = {}) {
 
     if (undecided.size > 0) {
         const kinds = new Set();
-        for (const { rule, inventory: held } of undecided.values()) {
-            for (const kind of undeterminedRuleKinds(rule, held, playerId)) kinds.add(kind);
+        for (const { rule, inventory: held, reached } of undecided.values()) {
+            for (const kind of undeterminedRuleKinds(rule, held, playerId, new Set(),
+                regionReachability(model, reached))) kinds.add(kind);
         }
         throw new SphereLogNotEvaluableError([...kinds].sort(), [...undecided.keys()].sort());
     }

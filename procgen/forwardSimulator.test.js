@@ -8,6 +8,7 @@ import {
     computeAccessibleLocations,
     pickNextTarget,
     generateSphereLog,
+    SphereLogNotEvaluableError,
 } from './forwardSimulator.js';
 
 // --- Fixture builders ---
@@ -340,6 +341,83 @@ describe('generateSphereLog', () => {
             start_regions: { '1': { default: ['Start'] } },
         };
         expect(() => generateSphereLog(doc)).not.toThrow();
+    });
+});
+
+// --- CanReachRegion: decided from the regions reached so far (⚖ 2026-10-04) ---
+
+const reachRegion = (region_name) => ({ rule: 'CanReachRegion', args: { region_name } });
+const has = (item_name) => ({ rule: 'Has', args: { item_name } });
+const loc = (name, item, access_rule = { rule: 'True_' }) => ({ name, access_rule, item: { name: item, advancement: true } });
+function graphDoc(regions) {
+    const out = {};
+    for (const [name, { exits = [], locations = [] }] of Object.entries(regions)) {
+        out[name] = {
+            name,
+            exits: exits.map(([to, access_rule]) => ({ name: `${name} -> ${to}`, connected_region: to, access_rule })),
+            locations,
+        };
+    }
+    return { regions: { '1': out }, start_regions: { '1': { default: ['Menu'] } } };
+}
+const sphereRegions = (log, idx) => log.find((e) => e.sphere_index === idx).player_data['1'].new_accessible_regions;
+const sphereLocations = (log, idx) => log.find((e) => e.sphere_index === idx).player_data['1'].new_accessible_locations;
+
+describe('generateSphereLog — CanReachRegion, AP semantics', () => {
+    it('iterates to a fixed point: B opens via CanReachRegion(C), C reached LATER in the same sphere', () => {
+        // Menu's exit to B is swept BEFORE A -> C adds C: a single pass reads
+        // CanReachRegion(C) as false. AP's sweep re-reads it once C is in.
+        const doc = graphDoc({
+            Menu: { exits: [['B', reachRegion('C')], ['A', { rule: 'True_' }]] },
+            A: { exits: [['C', { rule: 'True_' }]], locations: [loc('A chest', 'Key', reachRegion('B'))] },
+            B: { locations: [loc('B chest', 'Victory')] },
+            C: {},
+        });
+        const log = generateSphereLog(doc);
+        expect(sphereRegions(log, '0')).toEqual(['A', 'B', 'C', 'Menu']);
+        // A location rule reads the SAME fixed point (B is reached by then).
+        expect(sphereLocations(log, '0')).toEqual(['A chest', 'B chest']);
+        expect(log.filter((e) => e.sphere_index?.startsWith('0.')).map((e) => e.player_data['1'].sphere_locations[0]))
+            .toEqual(['A chest', 'B chest']);
+    });
+
+    it('the self-referential return edge is inert: CanReachRegion(the region it leads INTO)', () => {
+        // The RULES (A) shape: `Near -> Far` = And(CanReachRegion(Far), Has(Key)).
+        // Far is reached only through this edge, so it can never open.
+        const withEdge = graphDoc({
+            Menu: { exits: [['Near', { rule: 'True_' }]] },
+            Near: {
+                exits: [['Far', { rule: 'And', children: [reachRegion('Far'), has('Key')] }]],
+                locations: [loc('Near chest', 'Key')],
+            },
+            Far: { locations: [loc('Far chest', 'Victory')] },
+        });
+        const log = generateSphereLog(withEdge);
+        expect(log.flatMap((e) => e.player_data?.['1'].new_accessible_regions ?? [])).not.toContain('Far');
+        // …byte-identical to the same world without the edge at all.
+        const without = structuredClone(withEdge);
+        without.regions['1'].Near.exits = [];
+        expect(log).toEqual(generateSphereLog(without));
+    });
+
+    it('still REFUSES by name what the reached set cannot decide — and no longer names CanReachRegion', () => {
+        const doc = graphDoc({
+            Menu: { exits: [['A', { rule: 'Or', children: [reachRegion('Nowhere'), { rule: 'can_use_bombs' }] }],
+                ['B', { rule: 'CanReachLocation', args: { location_name: 'B chest' } }]] },
+            A: {},
+            B: { locations: [loc('B chest', 'Victory')] },
+            Nowhere: {},
+        });
+        let err;
+        try { generateSphereLog(doc); } catch (e) { err = e; }
+        expect(err).toBeInstanceOf(SphereLogNotEvaluableError);
+        expect(err.kinds).toEqual(['CanReachLocation', 'can_use_bombs']);
+        expect(err.endpoints).toEqual(['exit Menu -> Menu -> A', 'exit Menu -> Menu -> B']);
+    });
+
+    it('refuses CanReachRegion of a region the rules do not define, by name — never a guess', () => {
+        const doc = graphDoc({ Menu: { exits: [['A', reachRegion('Undefined')]] }, A: {} });
+        expect(() => generateSphereLog(doc)).toThrow(/not evaluable from an inventory: CanReachRegion /);
     });
 });
 

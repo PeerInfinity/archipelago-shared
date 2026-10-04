@@ -267,6 +267,15 @@ describe('isObstacleCleared / evaluateRuleAgainstInventory smoke (covered indire
         expect(undeterminedRuleKinds(rule, new Set())).toEqual([]); // Has a → false decides the And
     });
 
+    it('decides CanReachRegion through the engine\'s isRegionReachable hook when one is given', () => {
+        const rule = { rule: 'CanReachRegion', args: { region_name: 'X' } };
+        expect(evaluateRuleWithInventory(rule, new Set())).toBe(undefined);
+        expect(evaluateRuleWithInventory(rule, new Set(), '1', (r) => r === 'X')).toBe(true);
+        expect(evaluateRuleWithInventory(rule, new Set(), '1', () => false)).toBe(false);
+        const mixed = { rule: 'Or', children: [rule, { rule: 'can_use_bombs' }] };
+        expect(undeterminedRuleKinds(mixed, new Set(), '1', new Set(), () => false)).toEqual(['can_use_bombs']);
+    });
+
     it('treats unsupported rule constructs as unsatisfied (graceful degradation)', () => {
         // CountItem isn't in the local subset; instead of throwing,
         // the evaluator returns false so substrate placement / path
