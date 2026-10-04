@@ -421,13 +421,73 @@ describe('generateSphereLog — CanReachRegion, AP semantics', () => {
     });
 });
 
-// --- Round-trip against the Adventure preset ---
+// --- progression_mapping: resolved the way the app and AP resolve it (⚖ 2026-10-04) ---
 
-describe('generateSphereLog round-trip vs Adventure preset', () => {
+const hasN = (item_name, count) => ({ rule: 'Has', args: { item_name, count } });
+const picks = (log) => log.filter((e) => /^\d+\.\d+$/.test(e.sphere_index ?? ''))
+    .map((e) => `${e.sphere_index} ${e.player_data['1'].sphere_locations[0]}`);
+const SWORD_MAPPING = {
+    'Progressive Sword': {
+        base_item: 'Progressive Sword',
+        items: [{ name: 'Sword', level: 1 }, { name: 'Master Sword', level: 2 }],
+    },
+};
+// Each Progressive Sword is collected under its own name; a rule names the LEVEL.
+function swordDoc() {
+    return graphDoc({
+        Menu: { locations: [
+            loc('A', 'Progressive Sword'),
+            loc('B', 'Progressive Sword', has('Sword')),
+            loc('C', 'Victory', has('Master Sword')),
+        ] },
+    });
+}
+
+describe('generateSphereLog — progression_mapping', () => {
+    it('a progressive chain resolves by copies held: 1st copy → level 1, 2nd → level 2', () => {
+        const doc = { ...swordDoc(), progression_mapping: { '1': SWORD_MAPPING } };
+        expect(picks(generateSphereLog(doc))).toEqual(['0.1 A', '1.1 B', '2.1 C']);
+    });
+
+    it('the ADDITIVE kind (messenger `Shards`): the counter gains each collected item\'s value', () => {
+        const doc = graphDoc({
+            Menu: { locations: [
+                loc('A', 'Coin Bag'),
+                loc('B', 'Coin', hasN('Coins', 5)),
+                loc('C', 'Coins', hasN('Coins', 6)),
+                loc('D', 'Victory', hasN('Coins', 7)),
+            ] },
+        });
+        doc.progression_mapping = { '1': { Coins: {
+            type: 'additive', base_item: 'Coins', items: { Coin: 1, 'Coin Bag': 5 } } } };
+        // Coin Bag → 5, Coin → 6. The counter's OWN name collected at C is not
+        // counted (the stateManager's rule), so D (7) never opens.
+        expect(picks(generateSphereLog(doc))).toEqual(['0.1 A', '1.1 B', '2.1 C']);
+    });
+
+    it('a document with no mapping for the walked player is unchanged: the level name is never held', () => {
+        const noMapping = swordDoc();
+        const expected = ['0.1 A'];
+        expect(picks(generateSphereLog(noMapping))).toEqual(expected);
+        for (const progression_mapping of [{}, { '1': {} }]) {
+            expect(generateSphereLog({ ...noMapping, progression_mapping })).toEqual(generateSphereLog(noMapping));
+        }
+        // Another player's mapping is not this player's.
+        const otherPlayer = { ...noMapping, progression_mapping: { '2': SWORD_MAPPING } };
+        expect(generateSphereLog(otherPlayer)).toEqual(generateSphereLog(noMapping));
+    });
+});
+
+// --- Round-trip against Generate.py presets ---
+
+// Adventure; and the presets whose rules name a progression_mapping LEVEL
+// (Witness, Factorio) or carry a mapping at all (ffmq) — Generate.py's log is
+// the reference.
+describe.each(['adventure', 'witness', 'factorio', 'ffmq'])('generateSphereLog round-trip vs %s preset', (game) => {
     const repoRoot = path.resolve(__dirname, '../../../..');
     const presetDir = path.join(
         repoRoot,
-        'frontend/presets/adventure/AP_14089154938208861744',
+        `frontend/presets/${game}/AP_14089154938208861744`,
     );
     const rulesPath = path.join(presetDir, 'AP_14089154938208861744_rules.json');
     const sphereLogPath = path.join(presetDir, 'AP_14089154938208861744_sphere_log.jsonl');

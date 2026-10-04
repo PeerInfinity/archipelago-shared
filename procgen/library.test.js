@@ -286,3 +286,30 @@ describe('isObstacleCleared / evaluateRuleAgainstInventory smoke (covered indire
         )).toBe(false);
     });
 });
+
+describe('evaluateRuleWithInventory — progressionMapping (the app\'s resolution, genericLogic has/count)', () => {
+    const mapping = {
+        'Progressive Bow': { base_item: 'Progressive Bow',
+            items: [{ name: 'Bow', level: 1 }, { name: 'Silver Bow', level: 2 }] },
+        Coins: { type: 'additive', base_item: 'Coins', items: { Coin: 1 } },
+    };
+    const has = (item_name, count) => ({ rule: 'Has', args: count ? { item_name, count } : { item_name } });
+
+    it('a level name holds once enough copies of its progressive are held', () => {
+        const one = new Map([['Progressive Bow', 1]]);
+        const two = new Map([['Progressive Bow', 2]]);
+        expect(evaluateRuleWithInventory(has('Bow'), one, '1', null, mapping)).toBe(true);
+        expect(evaluateRuleWithInventory(has('Silver Bow'), one, '1', null, mapping)).toBe(false);
+        expect(evaluateRuleWithInventory(has('Silver Bow'), two, '1', null, mapping)).toBe(true);
+        // The progressive's own name still counts as itself.
+        expect(evaluateRuleWithInventory(has('Progressive Bow', 2), two, '1', null, mapping)).toBe(true);
+        // An ADDITIVE entry beside it does not throw (trap 1307) — its counter is read as held.
+        expect(evaluateRuleWithInventory(has('Coins', 3), new Map([['Coins', 3]]), '1', null, mapping)).toBe(true);
+    });
+
+    it('without a mapping a level name is just an unheld name', () => {
+        const two = new Map([['Progressive Bow', 2]]);
+        expect(evaluateRuleWithInventory(has('Bow'), two)).toBe(false);
+        expect(evaluateRuleWithInventory(has('Bow'), two, '1', null, {})).toBe(false);
+    });
+});

@@ -25,6 +25,7 @@
  */
 
 import { evaluateRule } from '../ruleEngine.js';
+import { helperFunctions as genericHelpers } from '../gameLogic/generic/genericLogic.js';
 
 export const DEFAULT_ITEMS = Object.freeze({
     // Victory item — when present in a scenario's item pool, the
@@ -173,16 +174,38 @@ export const DEFAULT_OBSTACLES = Object.freeze({
  * one the stateManager supplies. The forward simulator passes "is it in the
  * set reached so far", AP's semantics (CollectionState.can_reach_region over
  * the regions swept so far); without it, region reachability is `undefined`.
+ *
+ * `progressionMapping` (optional, the document's `progression_mapping[playerId]`)
+ * resolves PROGRESSIVE names the way the app does: `has('Symmetry')` holds once
+ * enough `Progressive Symmetry` are held. It is the app's own resolution —
+ * `gameLogic/generic/genericLogic.js` `has` / `count`, which answer the rule
+ * engine's item questions in play — read over this inventory. (ADDITIVE
+ * counters are not resolved here: they are collected INTO the inventory, see
+ * `shared/progressionMapping.js`.) Without a non-empty mapping the context is
+ * the plain inventory, unchanged.
  */
-export function inventoryRuleContext(inventory, playerId = '1', isRegionReachable = null) {
-    const count = inventory instanceof Map
+export function inventoryRuleContext(inventory, playerId = '1', isRegionReachable = null, progressionMapping = null) {
+    const held = inventory instanceof Map
         ? (name) => inventory.get(name) ?? 0
         : (name) => (inventory.has(name) ? 1 : 0);
+    let hasItem = (name) => held(name) > 0;
+    let countItem = held;
+    if (progressionMapping && Object.keys(progressionMapping).length > 0) {
+        const snapshot = {
+            inventory: new Proxy({}, { get: (_, name) => (typeof name === 'string' ? held(name) : undefined) }),
+        };
+        const staticData = {
+            playerId: String(playerId),
+            progression_mapping: { [String(playerId)]: progressionMapping },
+        };
+        hasItem = (name) => genericHelpers.has(snapshot, staticData, name);
+        countItem = (name) => genericHelpers.count(snapshot, staticData, name);
+    }
     const context = {
         _isSnapshotInterface: true,
         getPlayerId: () => String(playerId),
-        hasItem: (name) => count(name) > 0,
-        countItem: count,
+        hasItem,
+        countItem,
     };
     if (typeof isRegionReachable === 'function') context.isRegionReachable = isRegionReachable;
     return context;
@@ -193,11 +216,12 @@ export function inventoryRuleContext(inventory, playerId = '1', isRegionReachabl
  * (`shared/ruleEngine`, the evaluator play uses) — three-valued: true,
  * false, or `undefined` when the rule needs something an inventory
  * cannot answer (a game helper, a setting…; CanReachRegion too, unless
- * `isRegionReachable` is given — see inventoryRuleContext).
+ * `isRegionReachable` is given — see inventoryRuleContext). `progressionMapping`
+ * resolves progressive names, as for inventoryRuleContext.
  */
-export function evaluateRuleWithInventory(rule, inventory, playerId = '1', isRegionReachable = null) {
+export function evaluateRuleWithInventory(rule, inventory, playerId = '1', isRegionReachable = null, progressionMapping = null) {
     if (!rule || typeof rule !== 'object') return undefined;
-    return evaluateRule(rule, inventoryRuleContext(inventory, playerId, isRegionReachable));
+    return evaluateRule(rule, inventoryRuleContext(inventory, playerId, isRegionReachable, progressionMapping));
 }
 
 /**
@@ -223,15 +247,16 @@ export function evaluateRuleAgainstInventory(rule, inventory, playerId = '1') {
  * root through children that themselves evaluate to `undefined`, and name
  * each undecided node none of whose children is undecided — its `rule`,
  * or `type:<t>` for an AST node. Sorted, distinct; empty when the rule
- * evaluates to true/false. `isRegionReachable` as for evaluateRuleWithInventory.
+ * evaluates to true/false. `isRegionReachable` and `progressionMapping` as for
+ * evaluateRuleWithInventory.
  */
-export function undeterminedRuleKinds(rule, inventory, playerId = '1', out = new Set(), isRegionReachable = null) {
-    if (evaluateRuleWithInventory(rule, inventory, playerId, isRegionReachable) !== undefined) return [...out].sort();
+export function undeterminedRuleKinds(rule, inventory, playerId = '1', out = new Set(), isRegionReachable = null, progressionMapping = null) {
+    if (evaluateRuleWithInventory(rule, inventory, playerId, isRegionReachable, progressionMapping) !== undefined) return [...out].sort();
     let deeper = false;
     for (const child of Array.isArray(rule?.children) ? rule.children : []) {
-        if (evaluateRuleWithInventory(child, inventory, playerId, isRegionReachable) === undefined) {
+        if (evaluateRuleWithInventory(child, inventory, playerId, isRegionReachable, progressionMapping) === undefined) {
             deeper = true;
-            undeterminedRuleKinds(child, inventory, playerId, out, isRegionReachable);
+            undeterminedRuleKinds(child, inventory, playerId, out, isRegionReachable, progressionMapping);
         }
     }
     if (!deeper) {

@@ -44,6 +44,7 @@
  */
 
 import { evaluateRuleWithInventory, undeterminedRuleKinds } from './library.js';
+import { additiveProgressionGains, isAdditiveProgressionCounter } from '../progressionMapping.js';
 
 /**
  * generateSphereLog's refusal: some rule it had to evaluate is not
@@ -83,7 +84,7 @@ function regionReachability(model, reached) {
 // walkers' long-standing reading.
 function decide(model, rule, inventory, reached, undecided, endpoint) {
     const verdict = evaluateRuleWithInventory(rule, inventory, model.playerId,
-        regionReachability(model, reached));
+        regionReachability(model, reached), model.progressionMapping);
     if (verdict === undefined && undecided && !undecided.has(endpoint)) {
         undecided.set(endpoint, { rule, inventory: new Map(
             inventory instanceof Map ? inventory : [...inventory].map((n) => [n, 1])),
@@ -108,6 +109,7 @@ const DEFAULT_PLAYER_ID = '1';
  *   }>,
  *   startRegions: [regionName, ...],
  *   locationIndex: Map<locationName, locationObject>,
+ *   progressionMapping: rulesDoc.progression_mapping[playerId] | null,
  * }
  */
 export function buildAccessibilityModel(rulesDoc, playerId = DEFAULT_PLAYER_ID) {
@@ -134,7 +136,10 @@ export function buildAccessibilityModel(rulesDoc, playerId = DEFAULT_PLAYER_ID) 
         }
     }
     const startRegions = collectStartRegions(rulesDoc, playerId);
-    return { playerId, regions, startRegions, locationIndex };
+    const mapping = rulesDoc.progression_mapping?.[playerId];
+    const progressionMapping = mapping && typeof mapping === 'object' && Object.keys(mapping).length > 0
+        ? mapping : null;
+    return { playerId, regions, startRegions, locationIndex, progressionMapping };
 }
 
 function normalizeExit(exit) {
@@ -264,6 +269,20 @@ function toSet(value) {
     return new Set(value);
 }
 
+// Collect one item into the walk's Map<item, count> inventory, the way the
+// app's inventory does (stateManager/core/inventoryManager.js) and AP's
+// CollectionState.collect does: the item is counted under its own name (a
+// PROGRESSIVE name is resolved when a rule reads it — inventoryRuleContext),
+// and an ADDITIVE mapping's counter gains the item's value. The counter itself
+// is never collected by name.
+function collect(model, inventory, itemName) {
+    if (isAdditiveProgressionCounter(model.progressionMapping, itemName)) return;
+    inventory.set(itemName, (inventory.get(itemName) ?? 0) + 1);
+    for (const [counterName, value] of additiveProgressionGains(model.progressionMapping, itemName)) {
+        inventory.set(counterName, (inventory.get(counterName) ?? 0) + value);
+    }
+}
+
 function isAdvancement(item) {
     if (!item) return false;
     // If absent default to true — better to walk a possibly-filler
@@ -313,7 +332,7 @@ export function generateSphereLog(rulesDoc, opts = {}) {
     const inventory = new Map();
     const startingItemCounts = {};
     for (const name of startingItems) {
-        inventory.set(name, (inventory.get(name) ?? 0) + 1);
+        collect(model, inventory, name);
         startingItemCounts[name] = (startingItemCounts[name] ?? 0) + 1;
     }
     const checkedLocations = new Set();
@@ -378,7 +397,7 @@ export function generateSphereLog(rulesDoc, opts = {}) {
 
             checkedLocations.add(location.name);
             const itemName = location.item?.name;
-            if (itemName) inventory.set(itemName, (inventory.get(itemName) ?? 0) + 1);
+            if (itemName) collect(model, inventory, itemName);
 
             const afterRegions = computeReachableRegions(model, inventory, undecided);
             const afterLocs = computeAccessibleLocations(model, inventory, afterRegions, undecided);
@@ -411,7 +430,7 @@ export function generateSphereLog(rulesDoc, opts = {}) {
         const kinds = new Set();
         for (const { rule, inventory: held, reached } of undecided.values()) {
             for (const kind of undeterminedRuleKinds(rule, held, playerId, new Set(),
-                regionReachability(model, reached))) kinds.add(kind);
+                regionReachability(model, reached), model.progressionMapping)) kinds.add(kind);
         }
         throw new SphereLogNotEvaluableError([...kinds].sort(), [...undecided.keys()].sort());
     }
