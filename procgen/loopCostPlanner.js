@@ -91,6 +91,8 @@ import {
  * @property {Map<string, CostTopologyLocation>} locations
  * @property {Map<string, Array<{region: string, exitName: string}>>} adjacency
  * @property {Map<string, string>} regionSubstrates  region name → substrate id
+ * @property {Map<string, number>} [regionDrainRates] region name → the drain rate its
+ *           payload names (`timeDrainPerSecond`); read by the writer for SUMMARY regions
  */
 
 /** An empty topology — a planner with nothing to plan against. */
@@ -101,6 +103,7 @@ export function emptyTopology() {
     locations: new Map(),
     adjacency: new Map(),
     regionSubstrates: new Map(),
+    regionDrainRates: new Map(),
   };
 }
 
@@ -131,6 +134,24 @@ export function regionSubstratesFromRulesJson(rulesJson, playerId) {
 }
 
 /**
+ * region name → the drain rate its playable payload names, from the document's
+ * own preset sidecars: `playable_payload.timeDrainPerSecond`, a finite number
+ * > 0. A substrate that prices its regions at generation time writes it there
+ * (Noiz2sa, bulletml N5); `writeCostsByClass` passes it into a SUMMARY
+ * region's entry. Regions without one are absent.
+ */
+export function regionDrainRatesFromRulesJson(rulesJson, playerId) {
+  const out = new Map();
+  const sidecars = rulesJson?.preset_sidecars?.[playerId];
+  if (!sidecars || typeof sidecars !== 'object') return out;
+  for (const [regionName, entry] of Object.entries(sidecars)) {
+    const rate = entry?.playable_payload?.timeDrainPerSecond;
+    if (typeof rate === 'number' && Number.isFinite(rate) && rate > 0) out.set(regionName, rate);
+  }
+  return out;
+}
+
+/**
  * Build a topology straight from a rules.json — the PURE path, used by
  * `generateLoopCosts` at pipeline build time and by any headless caller.
  *
@@ -144,6 +165,7 @@ export function topologyFromRulesJson(rulesJson, playerId) {
   const topo = emptyTopology();
   topo.startRegion = resolveStartRegion(rulesJson, src, playerId);
   topo.regionSubstrates = regionSubstratesFromRulesJson(rulesJson, playerId);
+  topo.regionDrainRates = regionDrainRatesFromRulesJson(rulesJson, playerId);
 
   for (const [name, data] of Object.entries(src)) {
     const locationNames = [];
@@ -196,14 +218,21 @@ export function topologyFromRulesJson(rulesJson, playerId) {
  *
  * @param {Object} staticData `{regions: Map, locations: Map, eventLocations}`
  * @param {Object} [snapshot] `{startRegions}` from getLatestStateSnapshot()
+ * Likewise `regionDrainRates` (the payloads' own rates): the caller supplies it,
+ * and omitted every SUMMARY region gets the default drain.
+ *
  * @param {Object} [opts]
  * @param {Map<string,string>} [opts.regionSubstrates]
+ * @param {Map<string,number>} [opts.regionDrainRates]
  * @returns {CostTopology}
  */
 export function topologyFromStaticData(staticData, snapshot = null, opts = {}) {
   const topo = emptyTopology();
   if (opts.regionSubstrates instanceof Map) {
     topo.regionSubstrates = opts.regionSubstrates;
+  }
+  if (opts.regionDrainRates instanceof Map) {
+    topo.regionDrainRates = opts.regionDrainRates;
   }
   if (!staticData?.regions) return topo;
 

@@ -20,6 +20,7 @@ import {
     topologyFromRulesJson,
     topologyFromStaticData,
     regionSubstratesFromRulesJson,
+    regionDrainRatesFromRulesJson,
     REGION_CLASS,
     DEFAULT_REGION_COST,
     DEFAULT_LOCATION_COST,
@@ -509,6 +510,48 @@ describe('loopCostGenerator — WRITE BY CLASS (⚖ i, user 2026-09-06)', () => 
             const plain = generateLoopCosts({ rulesJson: other, sphereLog: LOG });
             expect(plain.regions.A.moveCost).toBeUndefined();
             expect(plain.locations.Loc1).toBeUndefined();
+        });
+
+        it('SUMMARY: the rate the region\'s PAYLOAD names is written (bulletml N5); coarse and the default untouched', () => {
+            registerSummary();
+            const rules = withSidecars({
+                A: { substrate: 'summary_sub', playable_payload: { timeDrainPerSecond: 0.625 } },
+                B: { substrate: 'summary_sub', playable_payload: {} },
+            });
+            const costs = generateLoopCosts({ rulesJson: rules, sphereLog: LOG });
+            expect(costs.regions.A).toEqual({ timeDrainPerSecond: 0.625, xpEffect: 'cost' });
+            // a payload with no rate: the default drain, as before
+            expect(costs.regions.B).toEqual({ timeDrainPerSecond: DEFAULT_TIME_DRAIN_PER_SECOND, xpEffect: 'cost' });
+            // the input block's explicit rate still wins over the payload's
+            rules.loop_costs = { '1': { regions: { A: { timeDrainPerSecond: 3 } }, locations: {} } };
+            expect(generateLoopCosts({ rulesJson: rules, sphereLog: LOG }).regions.A.timeDrainPerSecond).toBe(3);
+        });
+
+        it('a payload rate on a COARSE region changes nothing (runner/bounce/maze write no rate; coarse prices by moveCost)', () => {
+            registerDelegating();
+            const plain = generateLoopCosts({
+                rulesJson: withSidecars({ A: { substrate: 'maze_like' } }), sphereLog: LOG,
+            });
+            const rated = generateLoopCosts({
+                rulesJson: withSidecars({ A: { substrate: 'maze_like', playable_payload: { timeDrainPerSecond: 9 } } }),
+                sphereLog: LOG,
+            });
+            const strip = ({ generatedAt, ...rest }) => rest;
+            expect(strip(rated)).toEqual(strip(plain));
+        });
+
+        it('regionDrainRatesFromRulesJson / topologyFromStaticData carry the payloads\' rates', () => {
+            const rules = withSidecars({
+                A: { substrate: 's', playable_payload: { timeDrainPerSecond: 2.5 } },
+                B: { substrate: 's', playable_payload: { timeDrainPerSecond: 0 } },
+                C: { substrate: 's', playable_payload: { timeDrainPerSecond: 'x' } },
+            });
+            expect([...regionDrainRatesFromRulesJson(rules, '1')]).toEqual([['A', 2.5]]);
+            expect([...topologyFromRulesJson(rules, '1').regionDrainRates]).toEqual([['A', 2.5]]);
+            const rates = new Map([['A', 4]]);
+            expect(topologyFromStaticData({ regions: new Map() }, null, { regionDrainRates: rates }).regionDrainRates)
+                .toBe(rates);
+            expect(topologyFromStaticData({ regions: new Map() }).regionDrainRates.size).toBe(0);
         });
 
         it('NATIVE: no region entry and no location entries at all (jta, omsi)', () => {

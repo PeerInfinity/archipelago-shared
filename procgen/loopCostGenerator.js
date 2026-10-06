@@ -47,6 +47,7 @@ import {
     // public surface as much as generateLoopCosts is.
     topologyFromStaticData,
     regionSubstratesFromRulesJson,
+    regionDrainRatesFromRulesJson,
     resolveStartRegion,
     emptyTopology,
 } from './loopCostPlanner.js';
@@ -83,6 +84,7 @@ export {
     topologyFromRulesJson,
     topologyFromStaticData,
     regionSubstratesFromRulesJson,
+    regionDrainRatesFromRulesJson,
     emptyTopology,
 };
 
@@ -174,6 +176,10 @@ function normalizeRegionXpEffect(effect) {
  *            block already names EXPLICITLY for that region or its locations,
  *            passed through verbatim. (Explicit-only is the M5 ruling; a
  *            generated block must not make "explicit" mean "everything".)
+ *            The rate: the input block's explicit one, else the one the
+ *            region's PAYLOAD names (`topology.regionDrainRates` — a substrate
+ *            that prices its regions at generation time, Noiz2sa since
+ *            bulletml N5), else `timeDrainPerSecond` (the default 1).
  *
  * The START region is `{moveCost: START_REGION_MOVE_COST, xpEffect}` whatever
  * its class, unless it is SUMMARY (then the drain, as before). That zero is not
@@ -210,7 +216,11 @@ export function writeCostsByClass(rawCosts, {
         if (cls === REGION_CLASS.NATIVE) continue;
         if (cls === REGION_CLASS.SUMMARY) {
             const explicit = inputBlock?.regions?.[regionName];
-            const entry = { timeDrainPerSecond, xpEffect };
+            const own = topology.regionDrainRates?.get?.(regionName);
+            const entry = {
+                timeDrainPerSecond: typeof own === 'number' ? own : timeDrainPerSecond,
+                xpEffect,
+            };
             if (typeof explicit?.moveCost === 'number') entry.moveCost = explicit.moveCost;
             if (typeof explicit?.timeDrainPerSecond === 'number') {
                 entry.timeDrainPerSecond = explicit.timeDrainPerSecond;
