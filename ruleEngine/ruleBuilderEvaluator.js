@@ -9,12 +9,12 @@
  * AST_placement_search, AST_function_call, AST_dict_lambda_lookup,
  * AST_all_of, AST_any_of, Has, HasAll, HasAny, HasAllCounts, HasAnyCount,
  * HasFromList, HasFromListUnique, HasGroup, HasGroupUnique,
- * And, Or, Conditional, Not, AST_setting_value, AST_location_rule_ref,
+ * And, Or, Conditional, Not, AST_location_rule_ref,
  * AST_block, AST_count_true, AST_weighted_count_true, AST_prog_item_count,
  * CanReachRegion, CanReachLocation, CanReachEntrance, EntranceAccessRule,
  * Filtered, HelperCall, Compare, Arithmetic, MinValue, MaxValue,
  * Count, CountItem, CountGroup, CountGroupUnique, CountFromList,
- * UniqueCount, SettingValue, OptionValue, WorldAttribute, ItemCheck,
+ * UniqueCount, OptionValue, WorldAttribute, ItemCheck,
  * StateMethod, Attribute, Name, Tuple, weighted_sum, unique_count
  *
  * @module shared/ruleEngine/ruleBuilderEvaluator
@@ -513,15 +513,6 @@ export function createRuleBuilderEvaluator(evaluateRule) {
         const result = evaluateRule(notChild, context, depth + 1, localScope);
         if (result === undefined) return undefined;
         return !result;
-      }
-
-      // Setting value lookup (from converted AST format)
-      case 'AST_setting_value': {
-        const settingName = args.setting;
-        if (typeof context?.getSetting === 'function') {
-          return context.getSetting(settingName);
-        }
-        return undefined;
       }
 
       // Location rule reference (from converted AST format) - evaluate another location's access rule
@@ -1059,43 +1050,6 @@ export function createRuleBuilderEvaluator(evaluateRule) {
           }
         }
         return uniqueCount >= threshold;
-      }
-
-      // SettingValue: get a game setting value
-      // Rule Builder: {"rule": "SettingValue", "args": {"setting": "difficulty"}}
-      case 'SettingValue': {
-        const settingName = args.setting;
-        if (!settingName) {
-          log('warn', '[evaluateRuleBuilderRule] SettingValue rule missing setting');
-          return undefined;
-        }
-        // Try to get setting from context
-        if (context.getStaticData || context.staticData) {
-          const staticData = context.getStaticData ? context.getStaticData() : context.staticData;
-          const playerId = context.playerId || context.getPlayerId?.() || context.getPlayerSlot?.() || DEFAULT_PLAYER_ID;
-          // Get world data
-          const worldData = staticData?.world;
-          if (worldData && worldData[playerId]) {
-            const playerWorld = worldData[playerId];
-
-            // Check direct setting first
-            let settingValue = playerWorld[settingName];
-
-            // If not found, check in options sub-object
-            if (settingValue === undefined && playerWorld.options) {
-              settingValue = playerWorld.options[settingName];
-            }
-
-            if (settingValue !== undefined) {
-              // Convert string booleans to actual booleans
-              if (settingValue === 'true') return true;
-              if (settingValue === 'false') return false;
-              return settingValue;
-            }
-          }
-        }
-        log('debug', `[evaluateRuleBuilderRule] SettingValue: setting '${settingName}' not found`);
-        return undefined;
       }
 
       // OptionValue: get a user-configurable option value

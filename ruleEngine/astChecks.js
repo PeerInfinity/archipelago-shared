@@ -4,7 +4,7 @@
  * Handles: item_check, count_check, count_item, group_check, group_count,
  * counts, prog_item_count, count_true, weighted_count_true, unique_count,
  * total_items_count, locations_checked, location_check, location_rule_ref,
- * region_check, option_value, world_attribute, setting_check,
+ * region_check, option_value, world_attribute,
  * capability, value, constant, world_reference, tuple, name, f_string, player_id
  *
  * @module shared/ruleEngine/astChecks
@@ -530,21 +530,6 @@ export function createCheckHandlers(evaluateRule) {
       return hasError ? undefined : resultStr;
     },
 
-    'setting_check': (rule, context, depth, localScope, isValidContext) => {
-      let settingName = evaluateRule(rule.setting, context, depth + 1);
-      let expectedValue = evaluateRule(rule.value, context, depth + 1);
-
-      if (settingName === undefined || expectedValue === undefined) {
-        return undefined;
-      } else if (typeof settingName === 'string') {
-        const actualValue = context.getSetting(settingName);
-        return actualValue === undefined ? undefined : actualValue === expectedValue;
-      } else {
-        log('warn', '[evaluateRule] Invalid setting name for setting_check', { rule, settingName });
-        return undefined;
-      }
-    },
-
     'name': (rule, context, depth, localScope, isValidContext) => {
       // First check local scope
       if (localScope !== null && rule.name in localScope) {
@@ -619,7 +604,9 @@ export function createCheckHandlers(evaluateRule) {
   handlers['constant'] = handlers['value'];
   handlers['world_attribute'] = handlers['option_value'];
   // rules S7: the legacy `setting_value` node is retired (the schema refuses it;
-  // its writers emit option_value / world_attribute), so it has no handler.
+  // its writers emit option_value / world_attribute), so it has no handler —
+  // nor do its Rule Builder forms `SettingValue` / `AST_setting_value`, or the
+  // writer-less `setting_check` (test_schema_validation refuses all four).
 
   return handlers;
 }
