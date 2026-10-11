@@ -112,21 +112,24 @@ export class PathFinder {
             exitName: exit.name
           });
 
-          // Add reverse connection if bidirectional is assumed
+          // Add the reverse connection if bidirectional is assumed — but only
+          // where the world has NO explicit reverse exit. An explicit one is
+          // judged by its OWN access rule when its region's exits are walked
+          // (this loop); synthesizing it here skipped that rule, so a route
+          // could leave through an exit the player cannot open. Measured
+          // (tutorial-bugs, 2026-10-10): a spiral world's region_2_1 → region_2_0
+          // is open, region_2_0 → region_2_1 needs key_red, and the Playback
+          // Bot routed region_2_0 → region_2_1 through that locked exit.
           if (assumeBidirectional) {
-            // Look for the reverse exit name, or use the same name
-            let reverseExitName = exit.name;
             const reverseExit = staticData.regions.get(targetRegion)?.exits?.find(
               e => e.connected_region === regionName
             );
-            if (reverseExit) {
-              reverseExitName = reverseExit.name;
+            if (!reverseExit) {
+              adjacencyMap.get(targetRegion).push({
+                region: regionName,
+                exitName: exit.name
+              });
             }
-
-            adjacencyMap.get(targetRegion).push({
-              region: regionName,
-              exitName: reverseExitName
-            });
           }
         }
       }
