@@ -175,7 +175,7 @@ function generateComplexRule() {
       { type: 'can_reach', region: 'Region_0' },
       {
         type: 'conditional',
-        test: { type: 'setting_value', setting: 'difficulty' },
+        test: { type: 'option_value', option: 'difficulty' },
         if_true: { type: 'item_check', item: 'Item_3' },
         if_false: { type: 'constant', value: true },
       },
@@ -208,8 +208,8 @@ describe('Basic Rule Types', () => {
     evaluateRule({ type: 'can_reach', region: 'Region_0' }, smallContext);
   });
 
-  bench('setting_value', () => {
-    evaluateRule({ type: 'setting_value', setting: 'difficulty' }, smallContext);
+  bench('option_value', () => {
+    evaluateRule({ type: 'option_value', option: 'difficulty' }, smallContext);
   });
 
   bench('player_id', () => {

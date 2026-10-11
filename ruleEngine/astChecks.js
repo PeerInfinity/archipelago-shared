@@ -4,7 +4,7 @@
  * Handles: item_check, count_check, count_item, group_check, group_count,
  * counts, prog_item_count, count_true, weighted_count_true, unique_count,
  * total_items_count, locations_checked, location_check, location_rule_ref,
- * region_check, option_value, world_attribute, setting_value, setting_check,
+ * region_check, option_value, world_attribute, setting_check,
  * capability, value, constant, world_reference, tuple, name, f_string, player_id
  *
  * @module shared/ruleEngine/astChecks
@@ -489,7 +489,7 @@ export function createCheckHandlers(evaluateRule) {
           if (optionDef?.name_lookup) {
             const stringKey = optionDef.name_lookup[String(result)];
             if (stringKey !== undefined) {
-              log('debug', `[evaluateRule] setting_value use_current_key: converted ${settingName}=${result} to "${stringKey}"`);
+              log('debug', `[evaluateRule] ${rule.type} use_current_key: converted ${settingName}=${result} to "${stringKey}"`);
               result = stringKey;
             }
           }
@@ -618,7 +618,8 @@ export function createCheckHandlers(evaluateRule) {
   // Add aliases
   handlers['constant'] = handlers['value'];
   handlers['world_attribute'] = handlers['option_value'];
-  handlers['setting_value'] = handlers['option_value'];
+  // rules S7: the legacy `setting_value` node is retired (the schema refuses it;
+  // its writers emit option_value / world_attribute), so it has no handler.
 
   return handlers;
 }
