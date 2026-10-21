@@ -223,3 +223,40 @@ export function createBoundContext(context, iterator_info, value) {
     }
   };
 }
+
+/**
+ * Evaluates the elements of a list/tuple/set literal or a call's positional arguments,
+ * spreading `starred` (`*x`) elements the way Python does. The exporter emits a starred
+ * element either resolved (`unpacked_args`, constants) or unresolved (`value`, an
+ * expression that must evaluate to a list).
+ * @returns {Array|undefined} The evaluated elements, or undefined when any element (or
+ *   a starred element's iterable) is undetermined.
+ */
+export function evaluateElements(elements, evaluateRule, context, depth, localScope) {
+  const values = [];
+  for (const element of elements) {
+    if (element && element.type === 'starred') {
+      const spread = Array.isArray(element.unpacked_args)
+        ? element.unpacked_args.map((arg) => evaluateRule(arg, context, depth + 1, localScope))
+        : evaluateRule(element.value, context, depth + 1, localScope);
+      if (!Array.isArray(spread)) {
+        log('warn', '[evaluateRule] starred element is not iterable', { element, spread });
+        return undefined;
+      }
+      values.push(...spread);
+    } else {
+      values.push(evaluateRule(element, context, depth + 1, localScope));
+    }
+  }
+  return values.some((value) => value === undefined) ? undefined : values;
+}
+
+/**
+ * Python str() of an evaluated value, for f-string formatted values.
+ */
+export function pythonStr(value) {
+  if (value === true) return 'True';
+  if (value === false) return 'False';
+  if (value === null) return 'None';
+  return String(value);
+}

@@ -6,7 +6,7 @@
  * @module shared/ruleEngine/astFunctionCalls
  */
 
-import { log, DEFAULT_PLAYER_ID } from './helpers.js';
+import { log, DEFAULT_PLAYER_ID, evaluateElements } from './helpers.js';
 
 export function createFunctionCallHandlers(evaluateRule) {
   return {
@@ -473,6 +473,29 @@ export function createFunctionCallHandlers(evaluateRule) {
           const args = (rule.args || []).map(arg => evaluateRule(arg, context, depth + 1, localScope));
           const searchValue = args[0];
           return obj.filter(x => x === searchValue).length;
+        }
+      }
+
+      // Python list/set mutators on a local (`options.add((a, b))`, `xs.append(x)`): a set is an
+      // array here, so add/update skip a value already present (by value: tuples are arrays).
+      if (
+        rule.function?.type === 'attribute' &&
+        ['append', 'add', 'extend', 'update'].includes(rule.function.attr) &&
+        rule.function.object
+      ) {
+        const obj = evaluateRule(rule.function.object, context, depth + 1, localScope);
+        if (Array.isArray(obj)) {
+          const args = evaluateElements(rule.args || [], evaluateRule, context, depth, localScope);
+          if (args === undefined || args.length !== 1) return undefined;
+          const method = rule.function.attr;
+          const values = (method === 'extend' || method === 'update') ? args[0] : [args[0]];
+          if (!Array.isArray(values)) return undefined;
+          const keyOf = (value) => JSON.stringify(value);
+          for (const value of values) {
+            if ((method === 'add' || method === 'update') && obj.some((have) => keyOf(have) === keyOf(value))) continue;
+            obj.push(value);
+          }
+          return null;
         }
       }
 

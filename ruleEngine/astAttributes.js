@@ -20,6 +20,13 @@ export function createAttributeHandlers(evaluateRule) {
         baseObject = evaluateRule(rule.object, context, depth + 1, localScope);
       }
 
+      // A NamedTuple the exporter serialised (exporter/analyzer/utils.py make_json_serializable):
+      // the field's value by position (tunic's AreaStats).
+      if (baseObject && Array.isArray(baseObject._namedtuple_fields) && Array.isArray(baseObject._namedtuple_values)) {
+        const fieldIndex = baseObject._namedtuple_fields.indexOf(rule.attr);
+        if (fieldIndex !== -1) return baseObject._namedtuple_values[fieldIndex];
+      }
+
       // Special case: If we're accessing world.* and the property doesn't exist on the world object
       if (rule.object?.type === 'name' && rule.object?.name === 'world' &&
           baseObject && typeof baseObject === 'object' && baseObject[rule.attr] === undefined) {

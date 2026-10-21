@@ -5,12 +5,13 @@
  * counts, prog_item_count, count_true, weighted_count_true, unique_count,
  * total_items_count, locations_checked, location_check, location_rule_ref,
  * region_check, option_value, world_attribute,
- * capability, value, constant, world_reference, tuple, name, f_string, player_id
+ * capability, value, constant, world_reference, tuple, name, f_string, formatted_value,
+ * starred, player_id
  *
  * @module shared/ruleEngine/astChecks
  */
 
-import { log, DEFAULT_PLAYER_ID } from './helpers.js';
+import { log, DEFAULT_PLAYER_ID, evaluateElements, pythonStr } from './helpers.js';
 
 export function createCheckHandlers(evaluateRule) {
   const handlers = {
@@ -185,11 +186,7 @@ export function createCheckHandlers(evaluateRule) {
       if (!rule.elements || !Array.isArray(rule.elements)) {
         return [];
       }
-      const elements = rule.elements.map((elem) => evaluateRule(elem, context, depth + 1));
-      if (elements.some((elem) => elem === undefined)) {
-        return undefined;
-      }
-      return elements;
+      return evaluateElements(rule.elements, evaluateRule, context, depth, localScope);
     },
 
     'total_items_count': (rule, context, depth, localScope, isValidContext) => {
@@ -513,13 +510,13 @@ export function createCheckHandlers(evaluateRule) {
         if (part.type === 'constant') {
           resultStr += part.value;
         } else if (part.type === 'formatted_value') {
-          const value = evaluateRule(part.value, context, depth + 1, localScope);
+          const value = evaluateRule(part, context, depth + 1, localScope);
           if (value === undefined) {
             log('warn', '[evaluateRule] f_string formatted_value evaluated to undefined', { part });
             hasError = true;
             break;
           }
-          resultStr += String(value);
+          resultStr += value;
         } else {
           log('warn', '[evaluateRule] Unknown f_string part type', { part });
           hasError = true;
@@ -528,6 +525,20 @@ export function createCheckHandlers(evaluateRule) {
       }
 
       return hasError ? undefined : resultStr;
+    },
+
+    // One `{...}` of an f-string: Python str() of the expression. The exporter does not
+    // carry a conversion (`!r`) or format spec, so there is none to apply.
+    'formatted_value': (rule, context, depth, localScope, isValidContext) => {
+      const value = evaluateRule(rule.value, context, depth + 1, localScope);
+      return value === undefined ? undefined : pythonStr(value);
+    },
+
+    // `*x` is only meaningful where it is spread (a literal's elements, a call's
+    // arguments — see evaluateElements); anywhere else it is undetermined.
+    'starred': (rule, context, depth, localScope, isValidContext) => {
+      log('warn', '[evaluateRule] starred expression outside a literal or call', { rule });
+      return undefined;
     },
 
     'name': (rule, context, depth, localScope, isValidContext) => {

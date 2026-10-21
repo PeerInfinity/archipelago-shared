@@ -1,13 +1,13 @@
 /**
  * Collection and iteration AST handlers.
  *
- * Handles: all_of, any_of, sum_of, generator_expression,
+ * Handles: all_of, any_of, sum_of, generator_expression, set_comprehension,
  * min, max, sum, map, lambda, list, set, index, subscript, slice
  *
  * @module shared/ruleEngine/astCollections
  */
 
-import { log, createBoundContext } from './helpers.js';
+import { log, createBoundContext, evaluateElements } from './helpers.js';
 
 export function createCollectionHandlers(evaluateRule) {
   const handlers = {
@@ -134,12 +134,7 @@ export function createCollectionHandlers(evaluateRule) {
         log('warn', '[evaluateRule] List rule does not have an array value:', rule);
         return undefined;
       }
-      const evaluatedList = rule.value.map((itemRule) =>
-        evaluateRule(itemRule, context, depth + 1)
-      );
-      return evaluatedList.some((item) => item === undefined)
-        ? undefined
-        : evaluatedList;
+      return evaluateElements(rule.value, evaluateRule, context, depth, localScope);
     },
 
     'set': (rule, context, depth, localScope, isValidContext) => {
@@ -147,13 +142,8 @@ export function createCollectionHandlers(evaluateRule) {
         log('warn', '[evaluateRule] Set rule does not have an elements array:', rule);
         return undefined;
       }
-      const evaluatedSet = rule.elements.map((itemRule) =>
-        evaluateRule(itemRule, context, depth + 1)
-      );
-      const uniqueSet = [...new Set(evaluatedSet)];
-      return evaluatedSet.some((item) => item === undefined)
-        ? undefined
-        : uniqueSet;
+      const evaluatedSet = evaluateElements(rule.elements, evaluateRule, context, depth, localScope);
+      return evaluatedSet === undefined ? undefined : [...new Set(evaluatedSet)];
     },
 
     'all_of': (rule, context, depth, localScope, isValidContext) => {
@@ -367,6 +357,24 @@ export function createCollectionHandlers(evaluateRule) {
       } else {
         return evaluateRule(rule.element, context, depth + 1, localScope);
       }
+    },
+
+    // `{element for target in iterator if ...}`: the generator_expression's values, deduplicated
+    // by value (a Python set; `True == 1`). The exporter nests a multi-`for` comprehension as a
+    // set_comprehension whose element is another one; a set cannot hold a set, so an inner one is
+    // flattened. Undetermined when any element is.
+    'set_comprehension': (rule, context, depth, localScope, isValidContext) => {
+      const values = evaluateRule({ ...rule, type: 'generator_expression' }, context, depth + 1, localScope);
+      if (!Array.isArray(values)) return values;
+      const flat = rule.element?.type === 'set_comprehension' ? values.flat() : values;
+      if (flat.some((value) => value === undefined)) return undefined;
+      const seen = new Map();
+      for (const value of flat) {
+        const key = typeof value === 'boolean' ? Number(value)
+          : (value !== null && typeof value === 'object') ? `json:${JSON.stringify(value)}` : value;
+        if (!seen.has(key)) seen.set(key, value);
+      }
+      return [...seen.values()];
     },
 
     'index': (rule, context, depth, localScope, isValidContext) => {

@@ -1,13 +1,13 @@
 /**
  * Imperative statement AST handlers.
  *
- * Handles: block, assign, aug_assign, return, for_range, for_iter,
+ * Handles: block, assign, tuple_assign, aug_assign, return, for_range, for_iter,
  * while_loop, if_statement, break, continue, method_call, call
  *
  * @module shared/ruleEngine/astImperative
  */
 
-import { log } from './helpers.js';
+import { log, evaluateElements } from './helpers.js';
 
 export function createImperativeHandlers(evaluateRule) {
   return {
@@ -81,6 +81,33 @@ export function createImperativeHandlers(evaluateRule) {
       return localScope[varName];
     },
 
+    // `a, b = value`: Python unpacking. A value that is not a sequence of exactly
+    // len(targets) elements raises in Python; here every target is left undetermined.
+    'tuple_assign': (rule, context, depth, localScope, isValidContext) => {
+      const targets = rule.targets;
+      if (!Array.isArray(targets) || targets.length === 0) return undefined;
+
+      if (localScope === null) {
+        log('warn', '[evaluateRule] tuple_assign used without local scope');
+        return undefined;
+      }
+
+      let value = evaluateRule(rule.value, context, depth + 1, localScope);
+
+      if (value && typeof value === 'object' && value.__isReturn) {
+        value = value.value;
+      }
+
+      const unpackable = Array.isArray(value) && value.length === targets.length;
+      if (value !== undefined && !unpackable) {
+        log('warn', `[evaluateRule] tuple_assign: cannot unpack into ${targets.length} names`, { rule, value });
+      }
+      targets.forEach((name, index) => {
+        if (name !== '_') localScope[name] = unpackable ? value[index] : undefined;
+      });
+      return unpackable ? value : undefined;
+    },
+
     'aug_assign': (rule, context, depth, localScope, isValidContext) => {
       const varName = rule.target;
       if (!varName) return undefined;
@@ -113,25 +140,25 @@ export function createImperativeHandlers(evaluateRule) {
     },
 
     'for_range': (rule, context, depth, localScope, isValidContext) => {
+      // range(count) | range(start, stop[, step]). The exporter writes `stop`; `end` is the
+      // older spelling.
+      const operand = (value) => (typeof value === 'number'
+        ? value
+        : evaluateRule(value, context, depth + 1, localScope));
+      const stopRule = rule.stop !== undefined ? rule.stop : rule.end;
       let startVal = 0;
       let endVal;
+      let stepVal = 1;
 
-      if (rule.start !== undefined && rule.end !== undefined) {
-        startVal = typeof rule.start === 'number'
-          ? rule.start
-          : evaluateRule(rule.start, context, depth + 1, localScope);
-        endVal = typeof rule.end === 'number'
-          ? rule.end
-          : evaluateRule(rule.end, context, depth + 1, localScope);
+      if (rule.start !== undefined && stopRule !== undefined) {
+        startVal = operand(rule.start);
+        endVal = operand(stopRule);
+        if (rule.step !== undefined) stepVal = operand(rule.step);
       } else {
-        const count = typeof rule.count === 'number'
-          ? rule.count
-          : evaluateRule(rule.count, context, depth + 1, localScope);
-        endVal = count;
+        endVal = operand(rule.count);
       }
 
-      if (typeof startVal !== 'number' || typeof endVal !== 'number' ||
-          !Number.isFinite(startVal) || !Number.isFinite(endVal)) {
+      if (![startVal, endVal, stepVal].every(Number.isInteger) || stepVal === 0) {
         return undefined;
       }
 
@@ -140,7 +167,7 @@ export function createImperativeHandlers(evaluateRule) {
         return undefined;
       }
 
-      const iterations = endVal - startVal;
+      const iterations = Math.max(0, Math.ceil((endVal - startVal) / stepVal));
       const maxIterations = Math.min(iterations, 1000);
       if (iterations > 1000) {
         log('warn', `[evaluateRule] for_range iterations ${iterations} limited to 1000`);
@@ -148,7 +175,7 @@ export function createImperativeHandlers(evaluateRule) {
 
       let result;
       let breakLoop = false;
-      for (let i = startVal; i < startVal + maxIterations && !breakLoop; i++) {
+      for (let n = 0, i = startVal; n < maxIterations && !breakLoop; n++, i += stepVal) {
         if (rule.var && rule.var !== '_') {
           localScope[rule.var] = i;
         }
@@ -427,11 +454,9 @@ export function createImperativeHandlers(evaluateRule) {
       const funcName = rule.func;
       const callArgs = rule.args || [];
 
-      const evaluatedArgs = callArgs.map(arg =>
-        evaluateRule(arg, context, depth + 1, localScope)
-      );
+      const evaluatedArgs = evaluateElements(callArgs, evaluateRule, context, depth, localScope);
 
-      if (evaluatedArgs.some(arg => arg === undefined)) return undefined;
+      if (evaluatedArgs === undefined) return undefined;
 
       switch (funcName) {
         case 'max':
