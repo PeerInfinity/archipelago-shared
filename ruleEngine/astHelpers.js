@@ -433,12 +433,12 @@ export function createHelperHandlers(evaluateRule) {
             }
           }
         } else {
-          log('warn', `[evaluateRule] context.executeHelper is not a function for generic helper '${rule.name}'. Falling back to true.`);
-          result = true;
+          log('warn', `[evaluateRule] context.executeHelper is not a function for generic helper '${rule.name}'. Undetermined.`);
+          result = undefined;
         }
       } else {
-        log('warn', `[evaluateRule] Generic helper '${rule.name}' called without valid context - falling back to true`, { rule });
-        result = true;
+        log('warn', `[evaluateRule] Generic helper '${rule.name}' called without valid context - undetermined`, { rule });
+        result = undefined;
       }
       return result;
     },

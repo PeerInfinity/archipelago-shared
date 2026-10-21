@@ -626,6 +626,8 @@ export function createRuleBuilderEvaluator(evaluateRule) {
         return evaluateRule({ type: 'can_reach_entrance', entrance: entranceName }, context, depth + 1, localScope);
       }
 
+      // rule_builder serialises the class as EntranceAccessRuleCall; same args
+      case 'EntranceAccessRuleCall':
       case 'EntranceAccessRule': {
         // Evaluate an entrance's access_rule, optionally with a fake Moon Pearl state.
         // This is used for ALttP underworld glitch rules where dungeon_entrance.access_rule()
@@ -1367,6 +1369,31 @@ export function createRuleBuilderEvaluator(evaluateRule) {
 
         return total >= threshold - 0.01;
       }
+
+      // rule_builder's ASTRule wraps an AST rule it could not convert: evaluate that AST
+      case 'ASTRule': {
+        const ruleData = args.rule_data;
+        if (!ruleData || typeof ruleData !== 'object') {
+          log('warn', '[evaluateRuleBuilderRule] ASTRule missing rule_data');
+          return undefined;
+        }
+        return evaluateRule(ruleData, context, depth + 1, localScope);
+      }
+
+      // Python bool(x), emitted by the AST→RB converter for option.to_bool()
+      case 'bool': {
+        const operand = Array.isArray(args) ? args[0] : (args.args?.[0] ?? args.value);
+        const value = operand !== undefined ? evaluateRule(operand, context, depth + 1, localScope) : undefined;
+        if (value === undefined) return undefined;
+        return Boolean(value);
+      }
+
+      // Abstract rule_builder base classes: never serialised by a real rule, so a node of either
+      // kind is malformed. Refuse by name (undetermined) instead of calling a helper of that name.
+      case 'NestedRule':
+      case 'WrapperRule':
+        log('warn', `[evaluateRuleBuilderRule] '${ruleName}' is an abstract base class, not a rule; undetermined`);
+        return undefined;
 
       // Unknown rule type - try to find as a custom helper or delegate to AST evaluator
       default: {
