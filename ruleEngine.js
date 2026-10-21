@@ -11,4 +11,3 @@
 
 export { evaluateRule } from './ruleEngine/core.js';
 export { resolveHelperScope, clearHelperCache } from './ruleEngine/helperScope.js';
-export { debugRule, extractFunctionPath, debugPythonAST } from './ruleEngine/debug.js';

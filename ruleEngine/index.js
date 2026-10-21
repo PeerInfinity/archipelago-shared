@@ -9,4 +9,3 @@
 
 export { evaluateRule } from './core.js';
 export { resolveHelperScope, clearHelperCache } from './helperScope.js';
-export { debugRule, extractFunctionPath, debugPythonAST } from './debug.js';
