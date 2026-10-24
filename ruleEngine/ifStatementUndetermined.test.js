@@ -77,6 +77,38 @@ describe('an undetermined test makes the enclosing answer undetermined', () => {
   });
 });
 
+describe('an item_check test reads the context\'s countItem / hasItem (a maze inventory is a Map)', () => {
+  // tile-primitives-counted-rules: the maze's inventory is a Map<item, count>, read only through
+  // context.countItem / hasItem. A count the Map does not know is undetermined.
+  function mapCtx(inventory, known = [...inventory.keys()]) {
+    const c = ctx();
+    const calls = [];
+    c.countItem = (item) => { calls.push(`count ${item}`); return known.includes(item) ? (inventory.get(item) ?? 0) : undefined; };
+    c.hasItem = (item) => { calls.push(`has ${item}`); return known.includes(item) ? (inventory.get(item) ?? 0) > 0 : undefined; };
+    return { c, calls };
+  }
+  const keys = (count) => ({ type: 'item_check', item: constant('Key'), count: constant(count) });
+  const program = (test) => block(ifs(test, [ret('open')], [ret('shut')]), ret('after'));
+
+  it('a counted item_check goes through countItem and picks the branch', () => {
+    const { c, calls } = mapCtx(new Map([['Key', 2]]));
+    expect(evaluateRule(program(keys(2)), c)).toBe('open');
+    expect(evaluateRule(program(keys(3)), c)).toBe('shut');
+    expect(calls).toEqual(['count Key', 'count Key']);
+  });
+
+  it('an uncounted item_check goes through hasItem', () => {
+    const { c, calls } = mapCtx(new Map([['Key', 1]]));
+    expect(evaluateRule(program({ type: 'item_check', item: constant('Key') }), c)).toBe('open');
+    expect(calls).toEqual(['has Key']);
+  });
+
+  it('countItem answering undefined makes the if, and the function, undetermined', () => {
+    const { c } = mapCtx(new Map(), []);
+    expect(evaluateRule(program(keys(1)), c)).toBeUndefined();
+  });
+});
+
 describe('a determined test is unchanged', () => {
   for (const [test, expected] of [[true, 'body'], [false, 'else'], [1, 'body'], [0, 'else'], ['', 'else'], [null, 'else']]) {
     it(`test ${JSON.stringify(test)} runs the ${expected} branch`, () => {
