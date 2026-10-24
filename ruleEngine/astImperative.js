@@ -21,6 +21,16 @@ function isInert(statements) {
     isInert(stmt.body) && isInert(stmt.orelse) && isInert(stmt.statements));
 }
 
+/**
+ * A loop whose bound, iterable or condition is undetermined (or not something it can iterate): whether
+ * and how often its body runs is unknown, so the enclosing function's answer is too (F4's rule for an
+ * undetermined if_statement), unless the loop has no effect at all.
+ */
+function undeterminedLoop(rule) {
+  if (isInert(rule.body) && isInert(rule.orelse)) return undefined;
+  return { __isReturn: true, value: undefined };
+}
+
 export function createImperativeHandlers(evaluateRule) {
   return {
     'block': (rule, context, depth, localScope, isValidContext) => {
@@ -171,7 +181,7 @@ export function createImperativeHandlers(evaluateRule) {
       }
 
       if (![startVal, endVal, stepVal].every(Number.isInteger) || stepVal === 0) {
-        return undefined;
+        return undeterminedLoop(rule);
       }
 
       if (localScope === null) {
@@ -223,7 +233,7 @@ export function createImperativeHandlers(evaluateRule) {
 
       if (!Array.isArray(iterable)) {
         log('warn', `[evaluateRule] for_iter: iterable is not an array: ${typeof iterable}`);
-        return undefined;
+        return undeterminedLoop(rule);
       }
 
       if (localScope === null) {
@@ -301,6 +311,7 @@ export function createImperativeHandlers(evaluateRule) {
       while (!breakWhileLoop && whileIterCount < maxWhileIterations) {
         const conditionResult = evaluateRule(conditionRule, context, depth + 1, localScope);
 
+        if (conditionResult === undefined) return undeterminedLoop(rule);
         if (!conditionResult) break;
 
         whileIterCount++;
