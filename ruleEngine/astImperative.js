@@ -9,6 +9,18 @@
 
 import { log, evaluateElements } from './helpers.js';
 
+// Statement kinds whose only effect is running their nested statements (their tests and
+// iterables are expressions). A loop still binds its variable; that binding is tolerated.
+const NESTING_STATEMENTS = new Set(['if_statement', 'for_iter', 'for_range', 'while_loop', 'block']);
+
+/** True when running `statements` cannot return, break, continue or assign anything. */
+function isInert(statements) {
+  if (!Array.isArray(statements)) return true;
+  return statements.every(stmt => stmt && typeof stmt === 'object' &&
+    NESTING_STATEMENTS.has(stmt.type) &&
+    isInert(stmt.body) && isInert(stmt.orelse) && isInert(stmt.statements));
+}
+
 export function createImperativeHandlers(evaluateRule) {
   return {
     'block': (rule, context, depth, localScope, isValidContext) => {
@@ -348,7 +360,15 @@ export function createImperativeHandlers(evaluateRule) {
         testResult = testResult.value;
       }
 
-      if (testResult === undefined) return undefined;
+      if (testResult === undefined) {
+        // Undetermined test: which branch runs is unknown, so the enclosing function's answer is too —
+        // unless both branches would leave it the same (identical, or both without effect).
+        const body = rule.body || [];
+        const orelse = rule.orelse || [];
+        if (isInert(body) && isInert(orelse)) return undefined;
+        if (JSON.stringify(body) !== JSON.stringify(orelse)) return { __isReturn: true, value: undefined };
+        testResult = true;
+      }
 
       const statementsToExecute = testResult ? rule.body : rule.orelse;
       let result;
