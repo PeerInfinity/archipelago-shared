@@ -62,6 +62,44 @@ const handlers = Object.assign({},
 
 const evaluateRuleBuilderRule = createRuleBuilderEvaluator(evaluateRule);
 
+/**
+ * One caught evaluation error, from either rule format: logged at `error`, and
+ * handed to the context's optional `onRuleError` hook.
+ *
+ * Both formats CATCH AND REPORT (⚖ user, 2026-10-31): the node that threw
+ * answers `undefined` (undetermined) and evaluation carries on, so a caller
+ * with no hook sees exactly the AST path's long-standing behaviour.
+ *
+ * The hook lives ON THE CONTEXT (`context.onRuleError`) because the context is
+ * what every nested evaluation receives: handlers pass it down, a collection's
+ * bound context spreads it, and `createSnapshotInterface` spreads its
+ * `contextVariables` onto the interface that helper bodies and
+ * location/entrance sub-contexts are evaluated with. A caller therefore passes
+ * the hook as a context variable (`createSnapshotInterface(s, d, { onRuleError })`)
+ * and hears every error under the rule it evaluated. It is called once per
+ * caught error, at the innermost node that threw. A hook that throws is
+ * logged and swallowed: reporting must never turn into an escape.
+ */
+function reportRuleError(error, rule, context, depth, isValidContext) {
+  const ruleType = rule?.type;
+  const ruleName = ruleType ? undefined : rule?.rule;
+  log('error', '[evaluateRule] Error during evaluation:', {
+    ruleType,
+    ruleName,
+    rule,
+    error,
+    contextType: typeof context,
+    isSnapshot: isValidContext,
+  });
+  const hook = context?.onRuleError;
+  if (typeof hook !== 'function') return;
+  try {
+    hook({ error, rule, ruleType, ruleName, depth });
+  } catch (hookError) {
+    log('error', '[evaluateRule] onRuleError hook threw:', { hookError, error });
+  }
+}
+
 // Internal implementation of evaluateRule
 const _evaluateRuleImpl = (rule, context, depth, localScope) => {
   // Prevent infinite recursion by limiting depth
@@ -102,7 +140,13 @@ const _evaluateRuleImpl = (rule, context, depth, localScope) => {
   // Rule Builder format: {"rule": "Has", "options": [], "args": {"item_name": "Sword"}}
   // AST format: {"type": "item_check", "item": "Sword"}
   if (rule.rule && !rule.type) {
-    let rbResult = evaluateRuleBuilderRule(rule, context, depth, localScope);
+    let rbResult;
+    try {
+      rbResult = evaluateRuleBuilderRule(rule, context, depth, localScope);
+    } catch (error) {
+      reportRuleError(error, rule, context, depth, isValidContext);
+      rbResult = undefined;
+    }
 
     // Handle SMBool objects from SM helpers at depth 0
     // Convert to boolean based on maxDiff check
@@ -149,13 +193,7 @@ const _evaluateRuleImpl = (rule, context, depth, localScope) => {
       result = undefined;
     }
   } catch (error) {
-    log('error', '[evaluateRule] Error during evaluation:', {
-      ruleType,
-      rule,
-      error,
-      contextType: typeof context,
-      isSnapshot: isValidContext,
-    });
+    reportRuleError(error, rule, context, depth, isValidContext);
     result = undefined;
   }
 
