@@ -196,6 +196,37 @@ export function computeReachableRegions(model, inventory, undecided = null) {
 }
 
 /**
+ * Compute the set of exit names currently TRAVERSABLE — an exit whose
+ * parent region is reachable AND whose access_rule holds, decided by the
+ * same `decide` the region sweep uses (CanReachRegion reads
+ * `reachableRegions`). The entrance randomizer's `reach` hook needs this
+ * set (procgenCore/entranceRandomizer.js: `{regions, exits}`).
+ *
+ * An UNDECIDED rule (evaluateRuleWithInventory → undefined: a game
+ * helper, CanReachLocation, a setting) is NOT traversable — the walkers'
+ * reading, and the conservative one for a shuffle: counting an exit the
+ * evaluator cannot decide as open could let the randomizer hang the only
+ * way on with a requirement nobody priced, and the layout would be
+ * unbeatable; counting it shut can only cost a layout that would have
+ * worked. Pass `undecided` (a Map, as for computeReachableRegions) to
+ * see which exits were read that way.
+ */
+export function computeTraversableExits(model, inventory, reachableRegions = null, undecided = null) {
+    const reach = reachableRegions ?? computeReachableRegions(model, inventory, undecided);
+    const exits = new Set();
+    for (const regionName of reach) {
+        const region = model.regions.get(regionName);
+        if (!region) continue;
+        for (const exit of region.exits) {
+            if (decide(model, exit.access_rule, inventory, reach, undecided, `exit ${regionName} -> ${exit.name}`)) {
+                exits.add(exit.name);
+            }
+        }
+    }
+    return exits;
+}
+
+/**
  * Compute the set of location names currently accessible — i.e.,
  * located in a reachable region AND with their access_rule satisfied.
  */
