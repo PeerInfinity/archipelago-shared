@@ -25,6 +25,16 @@ export function log(level, message, ...data) {
   }
 }
 
+/**
+ * The level for "this context has no way to answer that". It is a warning,
+ * except for a context marked `_inventoryOnly` (`procgen/library.js`
+ * `inventoryRuleContext`), where the missing answer is the design and a caller
+ * may ask thousands of times.
+ */
+export function unanswerableLogLevel(context) {
+  return context?._inventoryOnly === true ? 'debug' : 'warn';
+}
+
 export class RuleTrace {
   constructor(rule, depth) {
     this.type = rule?.type || 'unknown';

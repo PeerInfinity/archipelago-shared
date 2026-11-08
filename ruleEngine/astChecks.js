@@ -11,7 +11,7 @@
  * @module shared/ruleEngine/astChecks
  */
 
-import { log, DEFAULT_PLAYER_ID, evaluateElements, pythonStr } from './helpers.js';
+import { log, unanswerableLogLevel, DEFAULT_PLAYER_ID, evaluateElements, pythonStr } from './helpers.js';
 
 export function createCheckHandlers(evaluateRule) {
   const handlers = {
@@ -261,7 +261,7 @@ export function createCheckHandlers(evaluateRule) {
         }
         return result;
       } else {
-        log('warn', '[evaluateRule] context.isLocationAccessible is not a function for location_check.');
+        log(unanswerableLogLevel(context), '[evaluateRule] context.isLocationAccessible is not a function for location_check.');
         return undefined;
       }
     },
@@ -335,7 +335,7 @@ export function createCheckHandlers(evaluateRule) {
         }
         return result;
       } else {
-        log('warn', '[evaluateRule] context.isRegionAccessible is not a function for region_check.');
+        log(unanswerableLogLevel(context), '[evaluateRule] context.isRegionAccessible is not a function for region_check.');
         return undefined;
       }
     },
@@ -375,7 +375,7 @@ export function createCheckHandlers(evaluateRule) {
           ? undefined
           : (currentCount || 0) >= requiredCount;
       } else {
-        log('warn', '[evaluateRule SnapshotIF] context.countGroup is not a function for group_check.');
+        log(unanswerableLogLevel(context), '[evaluateRule SnapshotIF] context.countGroup is not a function for group_check.');
         return undefined;
       }
     },

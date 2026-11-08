@@ -7,7 +7,7 @@
  * @module shared/ruleEngine/astReachability
  */
 
-import { log, DEFAULT_PLAYER_ID } from './helpers.js';
+import { log, unanswerableLogLevel, DEFAULT_PLAYER_ID } from './helpers.js';
 
 export function createReachabilityHandlers(evaluateRule) {
   return {
@@ -49,7 +49,7 @@ export function createReachabilityHandlers(evaluateRule) {
           }
           return result;
         }
-        log('warn', '[evaluateRule] context.isRegionReachable is not a function for can_reach.');
+        log(unanswerableLogLevel(context), '[evaluateRule] context.isRegionReachable is not a function for can_reach.');
         return undefined;
       }
     },

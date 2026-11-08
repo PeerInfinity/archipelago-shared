@@ -203,6 +203,7 @@ export function inventoryRuleContext(inventory, playerId = '1', isRegionReachabl
     }
     const context = {
         _isSnapshotInterface: true,
+        _inventoryOnly: true, // the rule engine logs what this cannot answer at debug: see unanswerableLogLevel
         getPlayerId: () => String(playerId),
         hasItem,
         countItem,

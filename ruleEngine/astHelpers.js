@@ -6,7 +6,7 @@
  * @module shared/ruleEngine/astHelpers
  */
 
-import { log, DEFAULT_PLAYER_ID } from './helpers.js';
+import { log, unanswerableLogLevel, DEFAULT_PLAYER_ID } from './helpers.js';
 
 export function createHelperHandlers(evaluateRule) {
   return {
@@ -401,7 +401,7 @@ export function createHelperHandlers(evaluateRule) {
             }
           }
         } else {
-          log('warn', `[evaluateRule SnapshotIF] context.executeHelper is not a function for helper '${rule.name}'. Assuming undefined.`);
+          log(unanswerableLogLevel(context), `[evaluateRule SnapshotIF] context.executeHelper is not a function for helper '${rule.name}'. Assuming undefined.`);
           result = undefined;
         }
       }
@@ -456,7 +456,7 @@ export function createHelperHandlers(evaluateRule) {
         } else if (typeof context.executeStateManagerMethod === 'function') {
           return context.executeStateManagerMethod(rule.method, ...args);
         } else {
-          log('warn', `[evaluateRule SnapshotIF] context.executeStateManagerMethod not a function for '${rule.method}'. Assuming undefined.`);
+          log(unanswerableLogLevel(context), `[evaluateRule SnapshotIF] context.executeStateManagerMethod not a function for '${rule.method}'. Assuming undefined.`);
           return undefined;
         }
       } else {
