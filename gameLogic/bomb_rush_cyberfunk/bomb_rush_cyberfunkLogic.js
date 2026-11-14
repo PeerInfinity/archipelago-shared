@@ -9,6 +9,14 @@
 
 import { DEFAULT_PLAYER_ID } from '../../playerIdUtils.js';
 
+// The snapshot player's prog_items (the slot being played: the same pattern as sc2/helpers.js getPlayerId).
+// Object keys are strings, so '2' and 2 read the same entry.
+function playerProgItems(snapshot, staticData) {
+    const playerId = snapshot?.player?.id || snapshot?.player?.slot ||
+                     staticData?.playerId || DEFAULT_PLAYER_ID;
+    return snapshot?.prog_items?.[String(playerId)];
+}
+
 // Basic helper function to count items
 function getItemCount(snapshot, itemName) {
     return snapshot?.inventory?.[itemName] || 0;
@@ -166,8 +174,7 @@ function current_chapter(snapshot, staticData, chapter) {
     }
 
     // Fallback: check prog_items structure
-    const progChapters = snapshot?.prog_items?.['1']?.['Chapter Completed'] ||
-                         snapshot?.prog_items?.[1]?.['Chapter Completed'] || 0;
+    const progChapters = playerProgItems(snapshot, staticData)?.['Chapter Completed'] || 0;
     if (progChapters >= chapter - 1) {
         return true;
     }
@@ -197,7 +204,7 @@ function rep(snapshot, staticData, required) {
     }
 
     // Fallback: check prog_items structure (used by spoiler tests)
-    const progRep = snapshot?.prog_items?.['1']?.rep || snapshot?.prog_items?.[1]?.rep || 0;
+    const progRep = playerProgItems(snapshot, staticData)?.rep || 0;
     if (progRep >= required) {
         return true;
     }
