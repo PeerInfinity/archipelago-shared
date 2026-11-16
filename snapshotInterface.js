@@ -202,6 +202,31 @@ function log(level, message, ...data) {
 }
 
 // Helper function to get game-specific helper functions
+/**
+ * The player's item name groups as `{groupName: [itemName, ...]}`, the shape
+ * Python's `world.item_name_groups` has. `item_groups[p]` is usually only the
+ * LIST of group names (spreading it gave `{0: name, 1: name}`), so membership
+ * is read from each item's `groups`; an object-shaped `item_groups[p]`
+ * (`{group: [items]}`) is taken as written. Mirrors statePersistence's
+ * `itemNameGroupsOf` (sdc-player1-tidy-3), which lives on the other side of
+ * the submodule boundary.
+ */
+export function itemNameGroupsFromStaticData(staticData, playerId) {
+  const declared = staticData?.item_groups?.[playerId] ?? staticData?.item_groups;
+  if (declared && !Array.isArray(declared) && typeof declared === 'object') {
+    const asWritten = Object.entries(declared).filter(([, v]) => Array.isArray(v));
+    if (asWritten.length > 0) return Object.fromEntries(asWritten);
+  }
+  const itemsData =
+    staticData?.itemsByPlayer?.[playerId] || staticData?.items?.[playerId] || staticData?.items || {};
+  const groups = {};
+  for (const [itemName, info] of Object.entries(itemsData)) {
+    if (!Array.isArray(info?.groups)) continue;
+    for (const g of info.groups) (groups[g] ||= []).push(itemName);
+  }
+  return groups;
+}
+
 function getHelperFunctions(gameName) {
   if (!gameName) {
     return genericLogic; // Default to generic (genericLogic IS the helperFunctions object)
@@ -473,7 +498,7 @@ export function createSnapshotInterface(
             // Include item_name_groups for helpers like has_relic_combo
             // Combines standard item_groups with game-specific groups (e.g., AHIT relic_groups)
             item_name_groups: {
-              ...(staticData?.item_groups?.[playerId] || staticData?.item_groups || {}),
+              ...itemNameGroupsFromStaticData(staticData, playerId),
               ...(gameInfo.relic_groups || {})
             }
           };
