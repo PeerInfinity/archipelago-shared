@@ -45,3 +45,32 @@ describe('PathFinder — assume-bidirectional never bypasses an explicit reverse
         expect(path.steps.map((s) => s.exitUsed)).toEqual([null, 'b_to_a']);
     });
 });
+
+describe('PathFinder.findDiscoveredPath — starts at start_regions.default (sdc-player1-tidy)', () => {
+    // The Map's FIRST region is not the start region (12 of 239 preset slots: Seedling, SM, …).
+    const regions = {
+        Ceres: { name: 'Ceres', exits: [] },
+        Menu: { name: 'Menu', exits: [{ name: 'm_to_b', connected_region: 'B', access_rule: { rule: 'True_' } }] },
+        B: { name: 'B', exits: [] },
+    };
+    const discovery = { isRegionDiscovered: () => true, isExitDiscovered: () => true };
+    function withStart(startRegions) {
+        const sm = stateManager(regions, []);
+        const base = sm.getStaticData();
+        sm.getStaticData = () => ({ ...base, startRegions });
+        return sm;
+    }
+
+    it('the {default, available} object starts at default[0], not the first region', () => {
+        const path = new PathFinder(withStart({ default: ['Menu'], available: [] })).findDiscoveredPath('B', discovery);
+        expect(path).toEqual(['Menu', 'B']);
+    });
+
+    it('a bare array still works', () => {
+        expect(new PathFinder(withStart(['Menu'])).findDiscoveredPath('B', discovery)).toEqual(['Menu', 'B']);
+    });
+
+    it('no start regions falls back to the first region', () => {
+        expect(new PathFinder(withStart(undefined)).findDiscoveredPath('Ceres', discovery)).toEqual(['Ceres']);
+    });
+});

@@ -7,6 +7,18 @@
  */
 
 /**
+ * The LOADED player's options. `staticData.world` is keyed by player id
+ * (`{"1": {...}, "2": {...}}`); in a combined (multiworld) document the
+ * loaded slot is `staticData.playerId`, not always "1".
+ * @param {Object} staticData - Static game data
+ * @returns {Object|undefined} The loaded player's `world[p].options`
+ */
+function playerOptions(staticData) {
+  const playerId = staticData?.playerId ?? '1';
+  return staticData?.world?.[String(playerId)]?.options;
+}
+
+/**
  * Count how many units of a progress ID the player has
  * @param {Object} snapshot - Canonical state snapshot
  * @param {Object} staticData - Static game data including items with provides
@@ -23,7 +35,7 @@ function countProgress(snapshot, staticData, progressId, visitedRules = new Set(
 
     // Special handling for setting-based progress IDs
     // These are not provided by items, but by game settings
-    const options = staticData?.world?.[1]?.options;
+    const options = playerOptions(staticData);
 
     if (progressId === 25) { // P_ALLOW_OOB
       // Return 1 if out_of_bounds is set to 'logic' (option value 2), else 0
@@ -133,8 +145,8 @@ export function has(snapshot, staticData, progressId, requiredCount = 1) {
     }
 
     // Special handling for P_ALLOW_OOB (25) and P_ALLOW_SEQUENCE_BREAKS (26)
-    // These are controlled by settings (options are nested under world[1].options)
-    const options = staticData?.world?.[1]?.options;
+    // These are controlled by settings (the loaded player's world[p].options)
+    const options = playerOptions(staticData);
 
     if (progressId === 25) { // P_ALLOW_OOB
       // Check if out_of_bounds is set to 'logic' (option value 2)
@@ -195,11 +207,17 @@ export function count(snapshot, staticData, itemName) {
  */
 export function location_item_name(snapshot, staticData, locationName) {
   try {
-    const regions = staticData?.regions?.[1];
+    // `staticData.regions` is a Map of the LOADED player's regions (not
+    // keyed by player id); a plain object is accepted for callers that
+    // hand in a raw rules-shaped table.
+    const regions = staticData?.regions;
     if (!regions) return null;
+    const regionList = typeof regions.values === 'function' && typeof regions.get === 'function'
+      ? Array.from(regions.values())
+      : Object.values(regions);
 
     // Search through all regions for the location
-    for (const region of Object.values(regions)) {
+    for (const region of regionList) {
       if (!region.locations) continue;
 
       const location = region.locations.find(loc => loc?.name === locationName);

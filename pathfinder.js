@@ -288,8 +288,14 @@ export class PathFinder {
     const staticData = this.stateManager.getStaticData();
     if (!staticData?.regions) return null;
 
+    // `startRegions` is the loaded slot's `start_regions[p]`, which every
+    // preset writes as `{default: [...], available: [...]}` (a bare array is
+    // accepted too). Indexing the object with [0] read undefined and fell
+    // through to the Map's first region, which is not Menu in every game.
+    const sr = staticData.startRegions;
+    const defaultStart = Array.isArray(sr) ? sr[0] : sr?.default?.[0];
     const effectiveStart = startRegion
-      || staticData.startRegions?.[0]
+      || defaultStart
       || (staticData.regions.size > 0 ? staticData.regions.keys().next().value : null);
 
     if (!effectiveStart) return null;
