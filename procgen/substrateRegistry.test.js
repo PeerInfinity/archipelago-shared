@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
-import { substrateRegistry } from './substrateRegistry.js';
+import { substrateRegistry, SHARING_TYPE_LIST_CATEGORIES } from './substrateRegistry.js';
 
 describe('substrateRegistry', () => {
     beforeEach(() => {
@@ -127,6 +127,26 @@ describe('substrateRegistry', () => {
             expect(() => substrateRegistry.register(
                 { id: 'x', sharing: { items: { extra: 1, types: ['a'] } } },
             )).toThrow(/items: unknown field 'extra'/);
+        });
+
+        it('accepts stats and resources in the items shape (the ledger categories)', () => {
+            const getTypes = () => ['gold'];
+            substrateRegistry.register({
+                id: 'an', sharing: { mana: {}, stats: { types: ['strength'] }, resources: { getTypes } },
+            });
+            expect(substrateRegistry.get('an').sharing.stats.types).toEqual(['strength']);
+            expect(substrateRegistry.get('an').sharing.resources.getTypes).toBe(getTypes);
+        });
+
+        it('validates stats and resources by the same rule as items, naming the category', () => {
+            for (const category of SHARING_TYPE_LIST_CATEGORIES) {
+                expect(() => substrateRegistry.register({ id: 'x', sharing: { [category]: {} } }))
+                    .toThrow(new RegExp(`${category}: exactly one of 'types' or 'getTypes'`));
+                expect(() => substrateRegistry.register({ id: 'x', sharing: { [category]: { types: [''] } } }))
+                    .toThrow(new RegExp(`${category}.types: must be an array of non-empty strings`));
+                expect(() => substrateRegistry.register({ id: 'x', sharing: { [category]: { other: 1, types: ['a'] } } }))
+                    .toThrow(new RegExp(`${category}: unknown field 'other'`));
+            }
         });
 
         it('a rejected entry is not registered', () => {

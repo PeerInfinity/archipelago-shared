@@ -96,6 +96,11 @@ export const REGION_CLASS = Object.freeze({
     SUMMARY: 'summary',
     /** The substrate runs its own mana economy (jta, omsi): NO entries. */
     NATIVE: 'native',
+    /**
+     * The substrate AUTHORS its own costs (`loopSupport.authoredCosts`, ActionNodes): the block's entries are the
+     * substrate's, passed through verbatim, never re-priced.
+     */
+    AUTHORED: 'authored',
 });
 
 /**
@@ -113,6 +118,13 @@ export const REGION_CLASS = Object.freeze({
  *            no region attached, so no block value is ever read, no region XP is
  *            awarded and no XP discount applies. ⚖ the user's "simplest option",
  *            already how the runtime behaves; the block only needs to EXIST.
+ *
+ *   AUTHORED `loopSupport.authoredCosts: true` — ActionNodes. Its compiler writes
+ *            every node's entry (`moveCost: 0`, `actions.act`, `xpGainScale`)
+ *            from the graph, so a cost pass must not re-price it: the block's
+ *            own entries pass through VERBATIM (`writeCostsByClass`). Tested
+ *            FIRST. No other substrate declares it, so no other world's block
+ *            moves.
  *
  *   COARSE   everything else, including two cases the slice's brief got wrong:
  *            • **maze** — it has `takeLastRecording` AND declares `sharing.mana`,
@@ -133,7 +145,7 @@ export const REGION_CLASS = Object.freeze({
  * silently dropped every cost would look exactly like a small world.
  *
  * @param {string|null} substrateId
- * @returns {'coarse'|'summary'|'native'}
+ * @returns {'coarse'|'summary'|'native'|'authored'}
  */
 export function classifyRegion(substrateId) {
     if (!substrateId) return REGION_CLASS.COARSE;
@@ -142,6 +154,7 @@ export function classifyRegion(substrateId) {
         entry = substrateRegistry.get(substrateId) ?? null;
     } catch { /* registry unavailable — treat as coarse */ }
     if (!entry) return REGION_CLASS.COARSE;
+    if (entry.loopSupport?.authoredCosts === true) return REGION_CLASS.AUTHORED;
     if (entry.loopSupport?.summaryRecording) return REGION_CLASS.SUMMARY;
     const mana = entry.sharing?.mana;
     if (typeof entry.takeLastRecording === 'function'
@@ -181,6 +194,12 @@ function normalizeRegionXpEffect(effect) {
  *            that prices its regions at generation time, Noiz2sa since
  *            bulletml N5), else `timeDrainPerSecond` (the default 1).
  *
+ *   AUTHORED the AUTHORED block's own entry for the region (and its locations'),
+ *            copied verbatim; nothing when it states none. The authored block
+ *            is `authoredBlock`, which defaults to `inputBlock` (the pipeline
+ *            passes the world's own `loop_costs`; the Loops panel's Generate
+ *            Costs passes the block it holds).
+ *
  * The START region is `{moveCost: START_REGION_MOVE_COST, xpEffect}` whatever
  * its class, unless it is SUMMARY (then the drain, as before). That zero is not
  * a PRICE, it is the rule that leaving the start region is free — which is why
@@ -195,6 +214,8 @@ function normalizeRegionXpEffect(effect) {
  * @param {Map<string,string>} args.regionClasses
  * @param {string} args.xpEffect
  * @param {Object} [args.inputBlock] an existing `loop_costs` to pass through
+ * @param {Object} [args.authoredBlock] the block an AUTHORED region's entries
+ *        are copied from (default `inputBlock`)
  * @param {number} [args.timeDrainPerSecond]
  * @returns {Object} the block
  */
@@ -203,12 +224,18 @@ export function writeCostsByClass(rawCosts, {
     regionClasses,
     xpEffect,
     inputBlock = null,
+    authoredBlock = inputBlock,
     timeDrainPerSecond = DEFAULT_TIME_DRAIN_PER_SECOND,
 } = {}) {
     const out = { regions: {}, locations: {} };
     const startRegion = topology.startRegion;
 
     for (const [regionName, cls] of regionClasses.entries()) {
+        if (cls === REGION_CLASS.AUTHORED) {
+            const own = authoredBlock?.regions?.[regionName];
+            if (own && typeof own === 'object') out.regions[regionName] = structuredClone(own);
+            continue;
+        }
         if (regionName === startRegion && cls !== REGION_CLASS.SUMMARY) {
             out.regions[regionName] = { moveCost: START_REGION_MOVE_COST, xpEffect };
             continue;
@@ -239,6 +266,11 @@ export function writeCostsByClass(rawCosts, {
     for (const [locationName, locData] of topology.locations.entries()) {
         const cls = regionClasses.get(locData.region) ?? REGION_CLASS.COARSE;
         if (cls === REGION_CLASS.NATIVE) continue;
+        if (cls === REGION_CLASS.AUTHORED) {
+            const own = authoredBlock?.locations?.[locationName];
+            if (typeof own === 'number') out.locations[locationName] = own;
+            continue;
+        }
         if (cls === REGION_CLASS.SUMMARY) {
             const explicit = inputBlock?.locations?.[locationName];
             if (typeof explicit === 'number') out.locations[locationName] = explicit;

@@ -11,11 +11,11 @@ import {
 } from '../loops/xpFormulas.js';
 import { getCostDataManager } from '../loops/index.js';
 import {
-  DEFAULT_EXPLORE_MULTIPLIER,
   DEFAULT_LOCATION_COST,
   DEFAULT_REGION_COST,
   START_REGION_MOVE_COST,
 } from './procgen/loopCostGenerator.js';
+import { customActionBaseCost, customActionDescription } from './procgen/loopCustomActions.js';
 
 /** Maximum characters for truncated action names */
 export const ACTION_NAME_MAX_CHARS = 30;
@@ -77,8 +77,10 @@ export function getBaseCost(action, loopState) {
       case 'locationCheck':
         return costDataManager.getLocationCost(action.locationName);
       case 'customAction':
-        return costDataManager.getRegionCost(action.sourceRegion)
-          * DEFAULT_EXPLORE_MULTIPLIER;
+        // The named-action table (explore: move × DEFAULT_EXPLORE_MULTIPLIER;
+        // act: the region's authored `actions.act`) — the same rule the
+        // charging path reads.
+        return customActionBaseCost(action, costDataManager);
       default:
         return DEFAULT_REGION_COST;
     }
@@ -130,7 +132,7 @@ export function calculateActionCost(action, loopState) {
 export function getActionDescription(action) {
   switch (action.type) {
     case 'customAction':
-      return `Explore: ${action.sourceRegion}`;
+      return customActionDescription(action);
     case 'locationCheck':
       return `Check: ${action.locationName}`;
     case 'regionMove': {

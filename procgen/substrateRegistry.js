@@ -73,7 +73,7 @@
  *     // Cross-substrate sharing declaration (optional). Declares which
  *     // resource-channel categories this substrate participates in.
  *     // Validated at register() time — unknown categories or malformed
- *     // shapes throw. Two categories exist:
+ *     // shapes throw. Four categories exist:
  *     //   mana — the continuous shared-pool channel (drain/refill/
  *     //     bonus/reset against the host's loop-mode mana). Presence
  *     //     means the host resource-channel router accepts this
@@ -89,8 +89,15 @@
  *     //     shareable type list as EITHER a static `types` array OR a
  *     //     `getTypes()` provider (exactly one of the two). Grant
  *     //     routing validates against it.
+ *     //   stats — per-loop stat counters the host ledger keeps for the
+ *     //     substrate (only go up; reset with the loop). Same
+ *     //     `{types}` | `{getTypes}` shape as items. Not transferable.
+ *     //   resources — per-loop resource counters the host ledger keeps
+ *     //     (go up or down, never below 0; reset with the loop). Same
+ *     //     shape. ActionNodes declares both (its world's ids).
  *     sharing,                  // { mana?: { loopActionDelegation?: boolean },
- *                               //   items?: { types: string[] } | { getTypes: () => string[] } }
+ *                               //   items?|stats?|resources?:
+ *                               //     { types: string[] } | { getTypes: () => string[] } }
  *
  *     // Build-time — required for substrates that drive procgen
  *     generateRegionCore,       // (input) -> { world, exits_placed, ... }
@@ -139,7 +146,13 @@
  * substrate that only supplies build-time adapters.
  */
 
-const SHARING_CATEGORIES = ['mana', 'items'];
+/**
+ * The sharing categories. `items`, `stats` and `resources` are TYPE-LIST
+ * categories: each declares its ids as `{types}` or `{getTypes}`, validated by
+ * one rule. `mana` is the shared pool.
+ */
+const SHARING_CATEGORIES = ['mana', 'items', 'stats', 'resources'];
+export const SHARING_TYPE_LIST_CATEGORIES = Object.freeze(['items', 'stats', 'resources']);
 
 /**
  * Validate an entry's optional `sharing` declaration (see the entry-shape
@@ -175,30 +188,35 @@ function validateSharingDeclaration(entry) {
             throw new Error(`${prefix}.mana.loopActionDelegation: must be a boolean`);
         }
     }
-    const items = sharing.items;
-    if (items !== undefined) {
-        if (!items || typeof items !== 'object' || Array.isArray(items)) {
-            throw new Error(`${prefix}.items: must be an object`);
+    for (const category of SHARING_TYPE_LIST_CATEGORIES) {
+        validateTypeListCategory(sharing[category], `${prefix}.${category}`);
+    }
+}
+
+/** `{types: string[]}` or `{getTypes: () => string[]}`, exactly one. */
+function validateTypeListCategory(decl, prefix) {
+    if (decl === undefined) return;
+    if (!decl || typeof decl !== 'object' || Array.isArray(decl)) {
+        throw new Error(`${prefix}: must be an object`);
+    }
+    for (const key of Object.keys(decl)) {
+        if (key !== 'types' && key !== 'getTypes') {
+            throw new Error(`${prefix}: unknown field '${key}'`);
         }
-        for (const key of Object.keys(items)) {
-            if (key !== 'types' && key !== 'getTypes') {
-                throw new Error(`${prefix}.items: unknown field '${key}'`);
-            }
-        }
-        const hasTypes = items.types !== undefined;
-        const hasGetTypes = items.getTypes !== undefined;
-        if (hasTypes === hasGetTypes) {
-            throw new Error(`${prefix}.items: exactly one of 'types' or 'getTypes' required`);
-        }
-        if (hasTypes && (
-            !Array.isArray(items.types)
-            || items.types.some((t) => typeof t !== 'string' || t.length === 0)
-        )) {
-            throw new Error(`${prefix}.items.types: must be an array of non-empty strings`);
-        }
-        if (hasGetTypes && typeof items.getTypes !== 'function') {
-            throw new Error(`${prefix}.items.getTypes: must be a function`);
-        }
+    }
+    const hasTypes = decl.types !== undefined;
+    const hasGetTypes = decl.getTypes !== undefined;
+    if (hasTypes === hasGetTypes) {
+        throw new Error(`${prefix}: exactly one of 'types' or 'getTypes' required`);
+    }
+    if (hasTypes && (
+        !Array.isArray(decl.types)
+        || decl.types.some((t) => typeof t !== 'string' || t.length === 0)
+    )) {
+        throw new Error(`${prefix}.types: must be an array of non-empty strings`);
+    }
+    if (hasGetTypes && typeof decl.getTypes !== 'function') {
+        throw new Error(`${prefix}.getTypes: must be a function`);
     }
 }
 

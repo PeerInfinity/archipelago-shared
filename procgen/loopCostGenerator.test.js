@@ -408,6 +408,9 @@ describe('loopCostGenerator — WRITE BY CLASS (⚖ i, user 2026-09-06)', () => 
         reg(id, { takeLastRecording: () => null, sharing: { mana: { loopActionDelegation: true } } });
     /** text_adventure: shared mana, NO recorder. */
     const registerTextLike = (id = 'ta_like') => reg(id, { sharing: { mana: {} } });
+    /** ActionNodes: shared mana, no recorder, and its costs are its own. */
+    const registerAuthored = (id = 'authored_sub') =>
+        reg(id, { loopSupport: { manual: false, authoredCosts: true }, sharing: { mana: {} } });
 
     beforeEach(() => { substrateRegistry.clear?.(); });
     afterEach(() => { substrateRegistry.clear?.(); });
@@ -441,6 +444,14 @@ describe('loopCostGenerator — WRITE BY CLASS (⚖ i, user 2026-09-06)', () => 
             // separates "charges its own pool" from "hands the action back".
             registerDelegating();
             expect(classifyRegion('maze_like')).toBe(REGION_CLASS.COARSE);
+        });
+
+        it('authoredCosts ⇒ AUTHORED (ActionNodes), tested before every other rule', () => {
+            registerAuthored();
+            expect(classifyRegion('authored_sub')).toBe(REGION_CLASS.AUTHORED);
+            // summaryRecording beside it does not win: authored is the first rule
+            reg('authored_summary', { loopSupport: { authoredCosts: true, summaryRecording: true } });
+            expect(classifyRegion('authored_summary')).toBe(REGION_CLASS.AUTHORED);
         });
 
         it('⚠ shared mana WITHOUT a recorder ⇒ COARSE (text_adventure)', () => {
@@ -552,6 +563,40 @@ describe('loopCostGenerator — WRITE BY CLASS (⚖ i, user 2026-09-06)', () => 
             expect(topologyFromStaticData({ regions: new Map() }, null, { regionDrainRates: rates }).regionDrainRates)
                 .toBe(rates);
             expect(topologyFromStaticData({ regions: new Map() }).regionDrainRates.size).toBe(0);
+        });
+
+        it('AUTHORED: the input block\'s own entries pass through VERBATIM; the planner\'s numbers never reach them', () => {
+            registerAuthored();
+            registerTextLike();
+            const rules = withSidecars({ A: { substrate: 'authored_sub' }, B: { substrate: 'ta_like' } });
+            const authoredA = { moveCost: 0, xpEffect: 'cost', xpGainScale: 0.5, actions: { act: 30 } };
+            rules.loop_costs = { '1': { regions: { A: authoredA }, locations: { Loc1: 4 } } };
+            const costs = generateLoopCosts({ rulesJson: rules, sphereLog: LOG });
+            expect(costs.regions.A).toEqual(authoredA);
+            expect(costs.regions.A).not.toBe(authoredA);
+            expect(costs.locations.Loc1).toBe(4);
+            // The coarse region beside it is priced exactly as before.
+            expect(typeof costs.regions.B.moveCost).toBe('number');
+            expect(typeof costs.locations.Loc2).toBe('number');
+            // With no authored block, nothing is written for the region (the substrate owns it).
+            const bare = generateLoopCosts({
+                rulesJson: withSidecars({ A: { substrate: 'authored_sub' } }), sphereLog: LOG,
+            });
+            expect(bare.regions.A).toBeUndefined();
+            expect(bare.locations.Loc1).toBeUndefined();
+        });
+
+        it('AUTHORED: writeCostsByClass reads `authoredBlock` when the caller names one (the Loops panel\'s Generate Costs)', () => {
+            registerAuthored();
+            const rules = withSidecars({ A: { substrate: 'authored_sub' } });
+            const topology = topologyFromRulesJson(rules, '1');
+            const raw = { regions: { A: { moveCost: 99 } }, locations: { Loc1: 99 }, defaultRegionCost: 50 };
+            const held = { regions: { A: { moveCost: 0, actions: { act: 7 } } }, locations: {} };
+            const out = writeCostsByClass(raw, {
+                topology, regionClasses: classifyRegions(topology), xpEffect: 'cost', authoredBlock: held,
+            });
+            expect(out.regions.A).toEqual(held.regions.A);
+            expect(out.locations.Loc1).toBeUndefined();
         });
 
         it('NATIVE: no region entry and no location entries at all (jta, omsi)', () => {
