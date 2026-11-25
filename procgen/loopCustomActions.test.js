@@ -8,6 +8,10 @@ import {
     customActionDescription,
     EXPLORE_ACTION,
     ACT_ACTION,
+    WAIT_ACTION,
+    waitUnitsOf,
+    customActionDefaultCost,
+    customActionXpDiscounts,
 } from './loopCustomActions.js';
 import { DEFAULT_EXPLORE_MULTIPLIER } from './loopCostDefaults.js';
 
@@ -23,8 +27,9 @@ function cdmOf(regions) {
 }
 
 describe('loopCustomActions — the named custom-action table', () => {
-    it('knows explore and act, and nothing else is a queue custom action', () => {
-        expect(Object.keys(CUSTOM_ACTIONS).sort()).toEqual([ACT_ACTION, EXPLORE_ACTION].sort());
+    it('knows explore, act and wait, and nothing else is a queue custom action', () => {
+        expect(Object.keys(CUSTOM_ACTIONS).sort()).toEqual([ACT_ACTION, EXPLORE_ACTION, WAIT_ACTION].sort());
+        expect(isQueueCustomAction({ type: 'customAction', actionName: 'wait' })).toBe(true);
         expect(isQueueCustomAction({ type: 'customAction', actionName: 'explore' })).toBe(true);
         expect(isQueueCustomAction({ type: 'customAction', actionName: 'act' })).toBe(true);
         expect(isQueueCustomAction({ type: 'customAction', actionName: 'dance' })).toBe(false);
@@ -62,5 +67,26 @@ describe('loopCustomActions — the named custom-action table', () => {
         expect(CUSTOM_ACTIONS.explore.completionEvent).toBe('loop:exploreCompleted');
         expect(CUSTOM_ACTIONS.act.completionChannel).toBe('eventBus');
         expect(CUSTOM_ACTIONS.act.completionEvent).toBe('loop:actionCompleted');
+    });
+
+    it('wait prices at its own params.units, never a region price, with or without cost data', () => {
+        const cdm = cdmOf({ N: { moveCost: 7, actions: { act: 40, wait: 99 } } });
+        const wait = { type: 'customAction', actionName: WAIT_ACTION, sourceRegion: 'N', params: { units: 2, label: 'Wait 2 h (opens 12:00)' } };
+        expect(customActionBaseCost(wait, cdm)).toBe(2);
+        expect(customActionDefaultCost(wait)).toBe(2);
+        expect(customActionBaseCost({ ...wait, params: {} }, cdm)).toBe(0);
+        expect(waitUnitsOf({ params: { units: -3 } })).toBe(0);
+        expect(customActionLabel(wait)).toBe('Wait 2 h (opens 12:00)');
+        expect(customActionDescription(wait)).toBe('Wait: Wait 2 h (opens 12:00)');
+        expect(customActionLabel({ ...wait, params: { units: 1 } })).toBe('Wait 1');
+    });
+
+    it('only a wait refuses the region-XP discount; every other action keeps it', () => {
+        expect(customActionXpDiscounts({ type: 'customAction', actionName: WAIT_ACTION })).toBe(false);
+        expect(customActionXpDiscounts({ type: 'customAction', actionName: ACT_ACTION })).toBe(true);
+        expect(customActionXpDiscounts({ type: 'customAction', actionName: EXPLORE_ACTION })).toBe(true);
+        expect(customActionXpDiscounts({ type: 'regionMove' })).toBe(true);
+        expect(CUSTOM_ACTIONS[WAIT_ACTION].completionChannel).toBe('eventBus');
+        expect(CUSTOM_ACTIONS[WAIT_ACTION].completionEvent).toBe(CUSTOM_ACTIONS[ACT_ACTION].completionEvent);
     });
 });

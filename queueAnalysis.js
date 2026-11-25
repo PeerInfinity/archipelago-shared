@@ -15,7 +15,7 @@ import {
   DEFAULT_REGION_COST,
   START_REGION_MOVE_COST,
 } from './procgen/loopCostGenerator.js';
-import { customActionBaseCost, customActionDescription } from './procgen/loopCustomActions.js';
+import { customActionBaseCost, customActionDescription, customActionXpDiscounts } from './procgen/loopCustomActions.js';
 
 /** Maximum characters for truncated action names */
 export const ACTION_NAME_MAX_CHARS = 30;
@@ -104,8 +104,9 @@ export function calculateActionCost(action, loopState) {
 
   // Apply region XP reduction if applicable, gated by the per-region
   // xpEffect from the loop_costs sidecar (defaults to 'cost').
+  // A custom action whose row says `xpDiscount: false` (a wait) is never discounted.
   const actionRegion = action.sourceRegion;
-  if (actionRegion && loopState) {
+  if (actionRegion && loopState && customActionXpDiscounts(action)) {
     const xpData = loopState.getRegionXP(actionRegion);
     level = xpData?.level || 0;
 
